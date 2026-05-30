@@ -14,17 +14,17 @@ pytestmark = pytest.mark.unit
 
 
 class FixedVectorClassifier:
-    async def classify(self, query: str) -> QueryRoute:
+    async def classify(self, query: str, *, config=None) -> QueryRoute:
         return QueryRoute(route=RouteType.VECTOR, confidence=0.9, reasoning="test")
 
 
 class StubVectorPipeline:
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         return {"answer": "Assistant reply", "sources": ["faq.md"]}
 
 
 class StubSQLPipeline:
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         return {"answer": "SQL reply", "sql_query": "SELECT 1"}
 
 

@@ -8,5 +8,5 @@ from src.domain.entities.chat import QueryRoute
 class RuleBasedClassifier(ClassifierPort):
     """Assessment-aligned routing via keyword and phrase rules (no LLM)."""
 
-    async def classify(self, query: str) -> QueryRoute:
+    async def classify(self, query: str, *, config=None) -> QueryRoute:
         return rule_based_classify(query)

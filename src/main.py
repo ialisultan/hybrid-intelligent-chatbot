@@ -27,6 +27,7 @@ from src.domain.exceptions.base import ChatbotError
 from src.infrastructure.config import get_settings
 from src.infrastructure.di import get_container
 from src.infrastructure.logging import configure_logging
+from src.infrastructure.tracing import configure_langsmith
 
 logger = structlog.get_logger(__name__)
 
@@ -35,6 +36,7 @@ logger = structlog.get_logger(__name__)
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Startup / shutdown lifecycle — initialise DI container and DB engine."""
     settings = get_settings()
+    configure_langsmith(settings)
     configure_logging(log_level=settings.log_level, json_output=settings.log_json)
 
     container = get_container()

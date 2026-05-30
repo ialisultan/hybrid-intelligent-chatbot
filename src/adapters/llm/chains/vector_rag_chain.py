@@ -3,7 +3,12 @@
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough
+from langchain_core.runnables import (
+    Runnable,
+    RunnableConfig,
+    RunnableLambda,
+    RunnablePassthrough,
+)
 from langchain_core.vectorstores import VectorStoreRetriever
 
 
@@ -36,12 +41,16 @@ def build_vector_rag_chain(retriever: VectorStoreRetriever, llm: Runnable) -> Ru
         ]
     )
 
-    async def retrieve_and_answer(inputs: dict) -> dict:
+    async def retrieve_and_answer(
+        inputs: dict,
+        config: RunnableConfig | None = None,
+    ) -> dict:
         query = inputs["query"]
-        docs = await retriever.ainvoke(query)
+        docs = await retriever.ainvoke(query, config=config)
         context = _format_docs(docs)
         answer = await (rag_prompt | llm | StrOutputParser()).ainvoke(
-            {"query": query, "context": context}
+            {"query": query, "context": context},
+            config=config,
         )
         return {"answer": answer, "sources": _extract_sources(docs)}
 

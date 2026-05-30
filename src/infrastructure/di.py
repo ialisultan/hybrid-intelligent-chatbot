@@ -30,6 +30,7 @@ from src.application.usecases.chat import ChatUseCase
 from src.domain.entities.llm import LLMProvider
 from src.infrastructure.config import Settings, get_settings
 from src.infrastructure.database import create_engine
+from src.infrastructure.tracing import make_graph_invoke_config_builder
 
 logger = structlog.get_logger(__name__)
 
@@ -127,12 +128,22 @@ class Container:
         )
 
     def _build_orchestrator(self) -> ChatOrchestrator:
+        invoke_config_builder = None
+        if self.settings.langsmith_tracing_active:
+            extra_tags: list[str] = []
+            if self.chat_model and self.chat_model.provider == LLMProvider.STUB:
+                extra_tags.append("stub")
+            invoke_config_builder = make_graph_invoke_config_builder(
+                self.settings,
+                extra_tags=extra_tags or None,
+            )
         return create_orchestrator(
             classifier=self.classifier,  # type: ignore[arg-type]
             sql_pipeline=self.sql_pipeline,  # type: ignore[arg-type]
             vector_pipeline=self.vector_pipeline,  # type: ignore[arg-type]
             conversation_repo=self.conversation_repo,
             history_limit=self.settings.conversation_history_limit,
+            invoke_config_builder=invoke_config_builder,
         )
 
     async def shutdown(self) -> None:

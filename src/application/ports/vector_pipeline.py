@@ -1,13 +1,19 @@
 """Vector pipeline port — retrieval-augmented grounded response."""
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 class VectorPipelinePort(ABC):
     """Port for the Vector LangGraph node — retrieves docs and generates grounded answers."""
 
     @abstractmethod
-    async def run(self, query: str) -> dict:
+    async def run(
+        self,
+        query: str,
+        *,
+        config: dict[str, Any] | None = None,
+    ) -> dict:
         """Process a natural language query via the vector RAG pipeline.
 
         Returns:

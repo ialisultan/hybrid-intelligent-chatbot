@@ -22,6 +22,12 @@ class ChatModelPort(ABC):
         ...
 
     @abstractmethod
-    async def generate(self, system_prompt: str, user_prompt: str) -> str:
+    async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        config: dict[str, Any] | None = None,
+    ) -> str:
         """Return the LLM completion text."""
         ...

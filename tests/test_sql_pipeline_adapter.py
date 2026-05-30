@@ -19,7 +19,7 @@ class MockChatModel:
     def __init__(self) -> None:
         self.langchain_model = MagicMock()
 
-    async def generate(self, system: str, user: str) -> str:
+    async def generate(self, system: str, user: str, *, config=None) -> str:
         return "Total revenue is $100."
 
 

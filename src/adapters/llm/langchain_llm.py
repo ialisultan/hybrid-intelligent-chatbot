@@ -33,8 +33,8 @@ class LangChainLLMAdapter(LLMPort):
     def langchain_embeddings(self):
         return self._embeddings.langchain_embeddings
 
-    async def generate(self, system_prompt: str, user_prompt: str) -> str:
-        return await self._chat_model.generate(system_prompt, user_prompt)
+    async def generate(self, system_prompt: str, user_prompt: str, *, config=None) -> str:
+        return await self._chat_model.generate(system_prompt, user_prompt, config=config)
 
     async def embed(self, text: str) -> list[float]:
         return await self._embeddings.embed(text)

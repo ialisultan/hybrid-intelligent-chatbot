@@ -20,7 +20,7 @@ class StubChatModelAdapter(ChatModelPort):
     def langchain_model(self) -> FakeListChatModel:
         return self._model
 
-    async def generate(self, system_prompt: str, user_prompt: str) -> str:
+    async def generate(self, system_prompt: str, user_prompt: str, *, config=None) -> str:
         return f"[Stub] {user_prompt[:120]}"
 
 

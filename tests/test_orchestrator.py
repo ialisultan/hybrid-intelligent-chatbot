@@ -13,17 +13,17 @@ pytestmark = pytest.mark.unit
 
 
 class FixedClassifier:
-    async def classify(self, query: str) -> QueryRoute:
+    async def classify(self, query: str, *, config=None) -> QueryRoute:
         return QueryRoute(route=RouteType.SQL, confidence=0.9, reasoning="test")
 
 
 class RecordingSQLPipeline:
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         return {"answer": "SQL result", "sql_query": "SELECT 1"}
 
 
 class RecordingVectorPipeline:
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         return {"answer": "Vector result", "sources": ["doc.md"]}
 
 
@@ -52,7 +52,7 @@ async def test_orchestrator_maps_graph_state_to_response():
 @pytest.mark.asyncio
 async def test_orchestrator_raises_when_classification_missing():
     class MockGraph:
-        async def ainvoke(self, _state):
+        async def ainvoke(self, _state, config=None):
             return {"confidence": 0.0}
 
     orchestrator = ChatOrchestrator(graph=MockGraph())

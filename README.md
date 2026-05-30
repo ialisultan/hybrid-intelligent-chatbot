@@ -254,8 +254,13 @@ Optional portfolio screenshot: save as [`docs/images/streamlit-demo.png`](docs/i
 | `RATE_LIMIT_ENABLED` | `true` | Rate limit `POST /api/v1/chat` |
 | `BACKEND_URL` | `http://localhost:8000` | API URL for Streamlit |
 | `APP_DEBUG` | `false` | Enables `POST /api/v1/classify` debug endpoint |
+| `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing (requires `LANGSMITH_API_KEY`) |
+| `LANGSMITH_API_KEY` | — | LangSmith API key (also accepts `LANGCHAIN_API_KEY`) |
+| `LANGSMITH_PROJECT` | `APP_NAME` | LangSmith project name for trace grouping |
 
-See [`.env.example`](.env.example) for the full list including Pinecone, Qdrant, and CORS.
+Multi-turn chats are grouped in LangSmith **Threads** using the API `conversation_id` as `thread_id` (reuse the same `conversation_id` across requests).
+
+See [`.env.example`](.env.example) for the full list including Pinecone, Qdrant, LangSmith, and CORS.
 
 ---
 

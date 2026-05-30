@@ -4,6 +4,9 @@ import os
 
 # Disable rate limiting in tests except test_rate_limit.py (avoids flaky 429s).
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+# Disable LangSmith tracing in tests (no external calls).
+os.environ.setdefault("LANGSMITH_TRACING", "false")
+os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
 
 import pytest
 from httpx import ASGITransport, AsyncClient

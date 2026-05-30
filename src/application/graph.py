@@ -10,6 +10,7 @@ from typing import Literal, TypedDict
 from uuid import UUID
 
 import structlog
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from src.application.context import (
@@ -77,9 +78,12 @@ def build_chat_graph(
             "contextual_query": contextual_query,
         }
 
-    async def classify_node(state: ChatState) -> ChatState:
+    async def classify_node(
+        state: ChatState,
+        config: RunnableConfig | None = None,
+    ) -> ChatState:
         contextual_query = state.get("contextual_query") or state["query"]
-        result = await classifier.classify(contextual_query)
+        result = await classifier.classify(contextual_query, config=config)
         logger.info(
             "graph.classify",
             route=result.route.value,
@@ -100,10 +104,13 @@ def build_chat_graph(
             return "vector_pipeline"
         raise RoutingViolationError(f"Unknown route: {route}")
 
-    async def sql_node(state: ChatState) -> ChatState:
+    async def sql_node(
+        state: ChatState,
+        config: RunnableConfig | None = None,
+    ) -> ChatState:
         contextual_query = state.get("contextual_query") or state["query"]
         logger.info("graph.sql_pipeline.start", query=contextual_query[:80])
-        result = await sql_pipeline.run(contextual_query)
+        result = await sql_pipeline.run(contextual_query, config=config)
         sources: list[str] = []
         sql_query = result.get("sql_query")
         validate_pipeline_output(
@@ -118,10 +125,13 @@ def build_chat_graph(
             "sources": sources,
         }
 
-    async def vector_node(state: ChatState) -> ChatState:
+    async def vector_node(
+        state: ChatState,
+        config: RunnableConfig | None = None,
+    ) -> ChatState:
         contextual_query = state.get("contextual_query") or state["query"]
         logger.info("graph.vector_pipeline.start", query=contextual_query[:80])
-        result = await vector_pipeline.run(contextual_query)
+        result = await vector_pipeline.run(contextual_query, config=config)
         sources = result.get("sources", [])
         sql_query = None
         validate_pipeline_output(

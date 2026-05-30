@@ -6,6 +6,7 @@ through PostgresAdapter, and formats results via ChatModelPort.
 """
 
 import json
+from typing import Any
 
 import structlog
 from langchain_core.runnables import Runnable
@@ -17,6 +18,7 @@ from src.application.ports.sql_pipeline import SQLPipelinePort
 from src.domain.entities.llm import LLMProvider
 from src.domain.exceptions.base import DatabaseError
 from src.infrastructure.config.settings import Settings
+from src.infrastructure.tracing.langsmith import build_child_run_config
 
 logger = structlog.get_logger(__name__)
 
@@ -37,18 +39,31 @@ class LangChainSQLPipelineAdapter(SQLPipelinePort):
             dialect=_settings.sql_dialect,
         )
 
-    async def run(self, query: str) -> dict:
+    async def run(
+        self,
+        query: str,
+        *,
+        config: dict[str, Any] | None = None,
+    ) -> dict:
         logger.info("sql_pipeline.run", query=query[:80])
         try:
             schema = await self._executor.get_schema_description()
             logger.info("sql_pipeline.schema_loaded", schema_length=len(schema))
 
-            result = await self._chain.ainvoke({"query": query, "schema": schema})
+            sql_config = build_child_run_config(
+                config,
+                run_name="sql_generation",
+                extra_metadata={"user_query": query},
+            )
+            result = await self._chain.ainvoke(
+                {"query": query, "schema": schema},
+                config=sql_config,
+            )
             sql = self._extract_sql(result)
             logger.info("sql_pipeline.generated", sql=sql[:120])
 
             rows = await self._executor.execute(sql)
-            answer = await self._format_answer(query, sql, rows)
+            answer = await self._format_answer(query, sql, rows, config=config)
             return {"answer": answer, "sql_query": sql}
         except DatabaseError as exc:
             logger.warning("sql_pipeline.database_error", error=str(exc))
@@ -71,7 +86,14 @@ class LangChainSQLPipelineAdapter(SQLPipelinePort):
             return str(result.get("sql", "SELECT 1"))
         return str(getattr(result, "sql", "SELECT 1"))
 
-    async def _format_answer(self, query: str, sql: str, rows: list[dict]) -> str:
+    async def _format_answer(
+        self,
+        query: str,
+        sql: str,
+        rows: list[dict],
+        *,
+        config: dict[str, Any] | None = None,
+    ) -> str:
         if self._chat_model.provider == LLMProvider.STUB:
             preview = json.dumps(rows[:5], default=str)
             return f"Executed SQL: {sql}\nResults: {preview}"
@@ -81,4 +103,9 @@ class LangChainSQLPipelineAdapter(SQLPipelinePort):
             "Use the user question and result rows only."
         )
         user = f"Question: {query}\nSQL: {sql}\nRows: {json.dumps(rows, default=str)}"
-        return await self._chat_model.generate(system, user)
+        format_config = build_child_run_config(
+            config,
+            run_name="sql_answer_formatting",
+            extra_metadata={"user_query": query},
+        )
+        return await self._chat_model.generate(system, user, config=format_config)

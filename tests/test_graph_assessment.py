@@ -20,12 +20,12 @@ ASSESSMENT_CASES = [
 
 
 class RecordingSQLPipeline:
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         return {"answer": f"SQL answer for: {query}", "sql_query": "SELECT 1"}
 
 
 class RecordingVectorPipeline:
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         return {"answer": f"Vector answer for: {query}", "sources": ["faq_support.md"]}
 
 

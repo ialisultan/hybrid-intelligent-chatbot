@@ -1,5 +1,7 @@
 """Anthropic chat model provider (no embeddings)."""
 
+from typing import Any
+
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -24,9 +26,16 @@ class AnthropicChatModelAdapter(ChatModelPort):
     def langchain_model(self) -> ChatAnthropic:
         return self._model
 
-    async def generate(self, system_prompt: str, user_prompt: str) -> str:
+    async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        config: dict[str, Any] | None = None,
+    ) -> str:
         response = await self._model.ainvoke(
-            [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
+            config=config or {},
         )
         content = response.content
         return content if isinstance(content, str) else str(content)

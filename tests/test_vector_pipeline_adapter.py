@@ -1,6 +1,6 @@
 """Vector pipeline adapter tests."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -48,7 +48,10 @@ async def test_run_returns_answer_and_sources(
 
     mock_to_retriever.assert_called_once()
     mock_build_chain.assert_called_once_with(mock_retriever, mock_chat_model.langchain_model)
-    mock_chain.ainvoke.assert_awaited_once_with({"query": "What is your return policy?"})
+    mock_chain.ainvoke.assert_awaited_once_with(
+        {"query": "What is your return policy?"},
+        config=ANY,
+    )
     assert "return" in result["answer"].lower()
     assert "return_policy.md" in result["sources"]
 

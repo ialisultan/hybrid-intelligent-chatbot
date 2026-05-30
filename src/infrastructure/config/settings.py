@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import Field, computed_field, field_validator, model_validator
+from pydantic import AliasChoices, Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 VectorStoreBackend = Literal["faiss", "qdrant", "pinecone"]
@@ -92,6 +92,18 @@ class Settings(BaseSettings):
     conversation_history_limit: int = Field(default=10, alias="CONVERSATION_HISTORY_LIMIT")
     conversation_repository: str = Field(default="postgres", alias="CONVERSATION_REPOSITORY")
 
+    # LangSmith tracing (opt-in)
+    langsmith_tracing: bool = Field(default=False, alias="LANGSMITH_TRACING")
+    langsmith_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"),
+    )
+    langsmith_project: str | None = Field(default=None, alias="LANGSMITH_PROJECT")
+    langsmith_endpoint: str | None = Field(default=None, alias="LANGSMITH_ENDPOINT")
+    langsmith_hide_inputs: bool = Field(default=False, alias="LANGSMITH_HIDE_INPUTS")
+    langsmith_hide_outputs: bool = Field(default=False, alias="LANGSMITH_HIDE_OUTPUTS")
+    langsmith_sampling_rate: float = Field(default=1.0, alias="LANGSMITH_SAMPLING_RATE")
+
     @field_validator("vector_store_backend")
     @classmethod
     def normalize_vector_backend(cls, value: str) -> str:
@@ -147,6 +159,16 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def langsmith_tracing_active(self) -> bool:
+        return self.langsmith_tracing and bool(self.langsmith_api_key.strip())
+
+    @property
+    def langsmith_project_name(self) -> str:
+        if self.langsmith_project and self.langsmith_project.strip():
+            return self.langsmith_project.strip()
+        return self.app_name
 
 
 @lru_cache

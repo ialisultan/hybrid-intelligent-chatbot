@@ -5,6 +5,8 @@ VectorStorePort (FAISS or Qdrant), runs grounded RAG, and returns
 answer + source citations.
 """
 
+from typing import Any
+
 import structlog
 from langchain_core.runnables import Runnable
 
@@ -15,6 +17,7 @@ from src.application.ports.vector_pipeline import VectorPipelinePort
 from src.application.ports.vector_store import VectorStorePort
 from src.domain.exceptions.base import VectorStoreError
 from src.infrastructure.config.settings import Settings
+from src.infrastructure.tracing.langsmith import build_child_run_config
 
 logger = structlog.get_logger(__name__)
 
@@ -33,10 +36,20 @@ class LangChainVectorPipelineAdapter(VectorPipelinePort):
             retriever, chat_model.langchain_model
         )
 
-    async def run(self, query: str) -> dict:
+    async def run(
+        self,
+        query: str,
+        *,
+        config: dict[str, Any] | None = None,
+    ) -> dict:
         logger.info("vector_pipeline.run", query=query[:80])
         try:
-            result = await self._chain.ainvoke({"query": query})
+            rag_config = build_child_run_config(
+                config,
+                run_name="vector_rag",
+                extra_metadata={"user_query": query},
+            )
+            result = await self._chain.ainvoke({"query": query}, config=rag_config)
             if isinstance(result, dict):
                 return {
                     "answer": result.get("answer", ""),

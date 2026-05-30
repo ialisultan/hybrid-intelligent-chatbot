@@ -12,17 +12,17 @@ class FixedClassifier:
     def __init__(self, route: RouteType) -> None:
         self._route = route
 
-    async def classify(self, query: str) -> QueryRoute:
+    async def classify(self, query: str, *, config=None) -> QueryRoute:
         return QueryRoute(route=self._route, confidence=0.95, reasoning="test")
 
 
 class RecordingSQLPipeline:
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         return {"answer": f"SQL answer for: {query}", "sql_query": "SELECT 1"}
 
 
 class RecordingVectorPipeline:
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         return {"answer": f"Vector answer for: {query}", "sources": ["faq.md"]}
 
 

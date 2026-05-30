@@ -16,7 +16,7 @@ class RecordingClassifier:
     def __init__(self) -> None:
         self.last_query: str = ""
 
-    async def classify(self, query: str) -> QueryRoute:
+    async def classify(self, query: str, *, config=None) -> QueryRoute:
         self.last_query = query
         return QueryRoute(route=RouteType.VECTOR, confidence=0.9, reasoning="test")
 
@@ -25,13 +25,13 @@ class RecordingVectorPipeline:
     def __init__(self) -> None:
         self.last_query: str = ""
 
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         self.last_query = query
         return {"answer": f"Vector answer for: {query}", "sources": ["faq.md"]}
 
 
 class RecordingSQLPipeline:
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         return {"answer": f"SQL answer for: {query}", "sql_query": "SELECT 1"}
 
 

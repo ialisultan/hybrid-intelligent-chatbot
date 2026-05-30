@@ -12,7 +12,7 @@ pytestmark = pytest.mark.unit
 class RecordingSQLPipeline:
     called = False
 
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         RecordingSQLPipeline.called = True
         return {"answer": f"SQL: {query}", "sql_query": "SELECT 1"}
 
@@ -20,7 +20,7 @@ class RecordingSQLPipeline:
 class RecordingVectorPipeline:
     called = False
 
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str, *, config=None) -> dict:
         RecordingVectorPipeline.called = True
         return {"answer": f"Vector: {query}", "sources": ["doc.md"]}
 

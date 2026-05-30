@@ -1,5 +1,7 @@
 """Provider-agnostic LLM query classifier implementing ClassifierPort."""
 
+from typing import Any
+
 import structlog
 
 from src.adapters.llm.chains.classifier_chain import build_classifier_chain
@@ -8,6 +10,7 @@ from src.application.ports.classifier import ClassifierPort
 from src.application.routing.rules import detect_policy_intent, rule_based_classify
 from src.domain.entities.chat import QueryRoute, RouteType
 from src.infrastructure.config.settings import Settings
+from src.infrastructure.tracing.langsmith import build_child_run_config
 from src.interfaces.schemas.classification import ClassificationResultSchema
 
 logger = structlog.get_logger(__name__)
@@ -21,7 +24,12 @@ class LLMQueryClassifier(ClassifierPort):
         self._threshold = settings.classifier_confidence_threshold
         self._provider = chat_model.provider.value
 
-    async def classify(self, query: str) -> QueryRoute:
+    async def classify(
+        self,
+        query: str,
+        *,
+        config: dict[str, Any] | None = None,
+    ) -> QueryRoute:
         if detect_policy_intent(query):
             route = QueryRoute(
                 route=RouteType.VECTOR,
@@ -36,7 +44,12 @@ class LLMQueryClassifier(ClassifierPort):
             return route
 
         try:
-            result = await self._chain.ainvoke({"query": query})
+            chain_config = build_child_run_config(
+                config,
+                run_name="classifier",
+                extra_metadata={"user_query": query},
+            )
+            result = await self._chain.ainvoke({"query": query}, config=chain_config)
             route_result = self._to_query_route(result)
 
             needs_fallback = (

@@ -1,5 +1,7 @@
 """High-level orchestrator — delegates to LangGraph pipeline."""
 
+from collections.abc import Callable
+from typing import Any
 from uuid import uuid4
 
 import structlog
@@ -19,8 +21,13 @@ logger = structlog.get_logger(__name__)
 class ChatOrchestrator:
     """Coordinates query classification and strict pipeline routing via LangGraph."""
 
-    def __init__(self, graph) -> None:
+    def __init__(
+        self,
+        graph,
+        invoke_config_builder: Callable[..., dict[str, Any]] | None = None,
+    ) -> None:
         self._graph = graph
+        self._invoke_config_builder = invoke_config_builder
 
     async def process(self, message: ChatMessage) -> ChatResponse:
         conversation_id = message.conversation_id or uuid4()
@@ -29,11 +36,19 @@ class ChatOrchestrator:
             conversation_id=str(conversation_id),
         )
 
+        config: dict[str, Any] = {}
+        if self._invoke_config_builder:
+            config = self._invoke_config_builder(
+                conversation_id=conversation_id,
+                user_query=message.content,
+            )
+
         state = await self._graph.ainvoke(
             {
                 "query": message.content,
                 "conversation_id": str(conversation_id),
-            }
+            },
+            config=config,
         )
 
         route_value = state.get("route")
@@ -62,6 +77,7 @@ def create_orchestrator(
     vector_pipeline: VectorPipelinePort,
     conversation_repo: ConversationRepositoryPort | None = None,
     history_limit: int = 10,
+    invoke_config_builder: Callable[..., dict[str, Any]] | None = None,
 ) -> ChatOrchestrator:
     """Factory — wire dependencies into the LangGraph orchestrator."""
     graph = build_chat_graph(
@@ -71,4 +87,7 @@ def create_orchestrator(
         conversation_repo=conversation_repo,
         history_limit=history_limit,
     )
-    return ChatOrchestrator(graph=graph)
+    return ChatOrchestrator(
+        graph=graph,
+        invoke_config_builder=invoke_config_builder,
+    )
