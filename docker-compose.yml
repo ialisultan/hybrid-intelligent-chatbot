@@ -56,6 +56,20 @@ services:
       retries: 3
       start_period: 40s
 
+  streamlit:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: hybrid-chatbot-streamlit
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://app:8000
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"
+    depends_on:
+      app:
+        condition: service_healthy
+
 volumes:
   postgres_data:
     driver: local

@@ -1,4 +1,4 @@
-.PHONY: help setup doctor postgres-up postgres-down local-init build up down wait-healthy restart logs migrate seed test test-unit test-integration lint format run shell clean clean-venv
+.PHONY: help setup doctor postgres-up postgres-down local-init build up down wait-healthy restart logs logs-streamlit migrate seed test test-unit test-integration lint format run backend backend-up streamlit shell clean clean-venv
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 COMPOSE          := docker compose
@@ -8,14 +8,20 @@ VENV_DIR         := .venv
 PYTHON3          := python3
 
 ifneq ("$(wildcard $(VENV_DIR)/bin/python)","")
-  PYTHON  := $(VENV_DIR)/bin/python
-  PIP     := $(VENV_DIR)/bin/pip
-  UVICORN := $(VENV_DIR)/bin/uvicorn
+  PYTHON    := $(VENV_DIR)/bin/python
+  PIP       := $(VENV_DIR)/bin/pip
+  UVICORN   := $(VENV_DIR)/bin/uvicorn
+  STREAMLIT := $(VENV_DIR)/bin/streamlit
 else
-  PYTHON  := python3
-  PIP     := pip3
-  UVICORN := uvicorn
+  PYTHON    := python3
+  PIP       := pip3
+  UVICORN   := uvicorn
+  STREAMLIT := streamlit
 endif
+
+export PYTHONPATH := $(CURDIR)
+BACKEND_URL       ?= http://localhost:8000
+STREAMLIT_PORT    ?= 8501
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -65,7 +71,10 @@ up: ## Start all services and bootstrap DB + vector index
 	@$(MAKE) wait-healthy
 	@$(MAKE) migrate seed index
 	@echo ""
-	@echo "Stack ready: http://localhost:$${APP_PORT:-8000}/docs"
+	@echo ""
+	@echo "Stack ready:"
+	@echo "  API docs:  http://localhost:$${APP_PORT:-8000}/docs"
+	@echo "  Streamlit: http://localhost:$(STREAMLIT_PORT)"
 
 wait-healthy: ## Wait for Postgres and app health checks
 	@chmod +x scripts/wait_healthy.sh
@@ -79,6 +88,9 @@ restart: down up ## Restart all services
 
 logs: ## Tail application logs
 	$(COMPOSE) logs -f $(APP_SERVICE)
+
+logs-streamlit: ## Tail Streamlit UI logs
+	$(COMPOSE) logs -f streamlit
 
 # ── Database ───────────────────────────────────────────────────────────────────
 migrate: ## Run Alembic migrations
@@ -108,6 +120,17 @@ index-local: ## Index documents into FAISS (local)
 run: ## Run FastAPI locally with hot reload (requires: make setup)
 	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)
 	$(UVICORN) main:app --host 0.0.0.0 --port 8000 --reload
+
+backend: run ## Alias: run FastAPI backend locally
+
+backend-up: ## Start Postgres, Qdrant, and API containers only (no Streamlit)
+	$(COMPOSE) up -d $(POSTGRES_SERVICE) qdrant $(APP_SERVICE)
+
+streamlit: ## Run Streamlit UI locally (requires: make setup + make run)
+	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)
+	BACKEND_URL=$(BACKEND_URL) $(STREAMLIT) run frontend/app.py \
+		--server.port $(STREAMLIT_PORT) \
+		--server.address 0.0.0.0
 
 install: ## Install production dependencies into .venv
 	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)

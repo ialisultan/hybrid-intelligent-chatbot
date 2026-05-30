@@ -110,6 +110,19 @@ open http://localhost:8000/docs
 
 `make up` waits for health checks, then runs migrations, seed data, and document indexing automatically.
 
+Open the Streamlit UI at **http://localhost:8501** (sidebar includes SQL, Vector, and edge-case demo buttons).
+
+## Quick Start — Streamlit (local backend)
+
+```bash
+make setup
+make postgres-up && make local-init   # or use Docker Postgres only
+make run                              # terminal 1 — API on :8000
+make streamlit                        # terminal 2 — UI on :8501
+```
+
+Set `BACKEND_URL` in `.env` if the API is not on `http://localhost:8000`.
+
 ## Quick Start — Local (no app container)
 
 ```bash
@@ -255,11 +268,29 @@ curl -s -X POST http://localhost:8000/api/v1/chat \
 | Tell me about orders policy | `vector` |
 | Customers refund issues | `vector` |
 
+The same queries are available as **sidebar buttons** in the Streamlit UI (`make streamlit` or http://localhost:8501 after `make up`).
+
 ---
 
 ## Project Structure
 
 ```
+├── src/                       # FastAPI + hexagonal backend
+├── frontend/
+│   ├── app.py                 # Streamlit chat UI
+│   ├── components/
+│   │   ├── sidebar.py         # Demo queries + backend status
+│   │   └── chat.py            # Chat history + Send
+│   ├── utils.py               # HTTP client for /api/v1/chat
+│   ├── Dockerfile
+│   └── requirements.txt
+├── Makefile
+├── Dockerfile                 # Backend API image
+├── docker-compose.yml         # postgres, qdrant, app, streamlit
+├── requirements.txt
+├── .env.example
+└── README.md
+
 src/
 ├── domain/                    # Entities & exceptions (pure Python)
 ├── application/
@@ -303,10 +334,14 @@ make format            # Auto-format
 |--------|-------------|
 | `setup` | Create `.venv` and install dev dependencies |
 | `build` | Build Docker images |
-| `up` | Start stack + migrate + seed + index |
+| `up` | Start stack + migrate + seed + index (API + Streamlit) |
 | `down` | Stop containers |
 | `local-init` | Local migrate + seed + FAISS index |
 | `run` | Local uvicorn with hot reload |
+| `backend` | Alias for `run` |
+| `backend-up` | Start Postgres, Qdrant, and API containers only |
+| `streamlit` | Run Streamlit UI locally (needs API on `BACKEND_URL`) |
+| `logs-streamlit` | Tail Streamlit container logs |
 | `doctor` | Diagnose local setup |
 | `migrate` / `seed` / `index` | Individual bootstrap steps (Docker) |
 | `test` / `lint` / `format` | Quality gates |

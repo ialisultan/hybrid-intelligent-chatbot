@@ -1,0 +1,90 @@
+"""Unit tests for Streamlit HTTP client utilities."""
+
+from unittest.mock import MagicMock, patch
+from uuid import UUID
+
+import httpx
+import pytest
+
+pytestmark = pytest.mark.unit
+
+from frontend.utils import get_backend_url, get_health, post_chat
+
+
+def test_get_backend_url_default(monkeypatch):
+    monkeypatch.delenv("BACKEND_URL", raising=False)
+    assert get_backend_url() == "http://localhost:8000"
+
+
+def test_get_backend_url_from_env(monkeypatch):
+    monkeypatch.setenv("BACKEND_URL", "http://api:8000/")
+    assert get_backend_url() == "http://api:8000"
+
+
+def test_post_chat_payload_and_url():
+    conv_id = UUID("3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {
+        "answer": "ok",
+        "route": "sql",
+        "confidence": 0.9,
+        "sources": [],
+        "sql_query": "SELECT 1",
+        "conversation_id": str(conv_id),
+    }
+
+    with patch("frontend.utils.httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__.return_value = mock_client
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        result = post_chat("Total revenue?", conversation_id=conv_id, backend_url="http://test:8000")
+
+    mock_client.post.assert_called_once_with(
+        "http://test:8000/api/v1/chat",
+        json={
+            "query": "Total revenue?",
+            "conversation_id": str(conv_id),
+        },
+    )
+    assert result["route"] == "sql"
+
+
+def test_post_chat_without_conversation_id():
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {"answer": "hi", "route": "vector"}
+
+    with patch("frontend.utils.httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__.return_value = mock_client
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        post_chat("Hello")
+
+    call_kwargs = mock_client.post.call_args
+    assert call_kwargs[1]["json"] == {"query": "Hello"}
+
+
+def test_get_health():
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {
+        "status": "ok",
+        "chat_provider": "openai",
+        "embedding_provider": "openai",
+    }
+
+    with patch("frontend.utils.httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__.return_value = mock_client
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        health = get_health(backend_url="http://test:8000")
+
+    mock_client.get.assert_called_once_with("http://test:8000/health")
+    assert health["status"] == "ok"
