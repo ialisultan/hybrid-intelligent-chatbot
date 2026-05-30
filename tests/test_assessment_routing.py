@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.adapters.llm.stub import StubClassifier
-from src.application.chains.classifier_chain import rule_based_classify
+from src.adapters.llm.rule_classifier import RuleBasedClassifier
+from src.application.routing.rules import rule_based_classify
 from src.domain.entities.chat import RouteType
 
 pytestmark = pytest.mark.unit
@@ -27,7 +27,7 @@ def test_rule_based_assessment_routing(query, expected):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("query,expected", ASSESSMENT_CASES)
-async def test_stub_classifier_assessment_routing(query, expected):
-    classifier = StubClassifier()
+async def test_rule_classifier_assessment_routing(query, expected):
+    classifier = RuleBasedClassifier()
     result = await classifier.classify(query)
     assert result.route == expected

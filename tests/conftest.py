@@ -1,10 +1,15 @@
 """Shared pytest fixtures."""
 
+import os
+
+# Disable rate limiting in tests except test_rate_limit.py (avoids flaky 429s).
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 import src.infrastructure.di as di_module
-from main import create_app
+from src.main import create_app
 
 
 @pytest.fixture
@@ -28,16 +33,14 @@ async def stub_container(monkeypatch):
     monkeypatch.setenv("CONVERSATION_REPOSITORY", "memory")
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
-    di_module.get_settings.cache_clear()
-    di_module._container = None
+    di_module.reset_container()
 
     container = di_module.get_container()
     await container.init()
     yield container
 
     await container.shutdown()
-    di_module._container = None
-    di_module.get_settings.cache_clear()
+    di_module.reset_container()
 
 
 @pytest.fixture

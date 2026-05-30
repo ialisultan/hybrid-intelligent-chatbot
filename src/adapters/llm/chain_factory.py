@@ -3,8 +3,8 @@
 from langchain_core.runnables import Runnable
 
 from src.adapters.vector.langchain_bridge import to_retriever
-from src.application.chains.classifier_chain import build_classifier_chain
-from src.application.chains.vector_rag_chain import build_vector_rag_chain
+from src.adapters.llm.chains.classifier_chain import build_classifier_chain
+from src.adapters.llm.chains.vector_rag_chain import build_vector_rag_chain
 from src.application.ports.chat_model import ChatModelPort
 from src.application.ports.vector_store import VectorStorePort
 from src.infrastructure.config.settings import Settings

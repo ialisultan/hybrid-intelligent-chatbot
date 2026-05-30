@@ -8,6 +8,9 @@ POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres}"
 POSTGRES_USER="${POSTGRES_USER:-chatbot}"
 APP_PORT="${APP_PORT:-8000}"
 STREAMLIT_PORT="${STREAMLIT_PORT:-8501}"
+VECTOR_STORE_BACKEND="${VECTOR_STORE_BACKEND:-faiss}"
+QDRANT_HOST="${QDRANT_HOST:-localhost}"
+QDRANT_PORT="${QDRANT_PORT:-6333}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-60}"
 
 echo "Waiting for Postgres..."
@@ -22,6 +25,21 @@ for i in $(seq 1 "$MAX_ATTEMPTS"); do
   fi
   sleep 1
 done
+
+if [ "$VECTOR_STORE_BACKEND" = "qdrant" ]; then
+  echo "Waiting for Qdrant at ${QDRANT_HOST}:${QDRANT_PORT}..."
+  for i in $(seq 1 "$MAX_ATTEMPTS"); do
+    if bash -c "exec 3<>/dev/tcp/${QDRANT_HOST}/${QDRANT_PORT}" 2>/dev/null; then
+      echo "Qdrant is ready."
+      break
+    fi
+    if [ "$i" -eq "$MAX_ATTEMPTS" ]; then
+      echo "Qdrant did not become ready in time." >&2
+      exit 1
+    fi
+    sleep 1
+  done
+fi
 
 echo "Waiting for app /health..."
 for i in $(seq 1 "$MAX_ATTEMPTS"); do

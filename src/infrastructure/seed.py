@@ -1,45 +1,42 @@
 """Database seed script — populates sample structured data."""
 
 import asyncio
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import structlog
-from sqlalchemy import text
+from sqlalchemy import func, select
 
+from src.adapters.persistence.models import Customer, Order, Product
 from src.infrastructure.config import get_settings
 from src.infrastructure.database import create_engine, get_session_factory
 
 logger = structlog.get_logger(__name__)
 
-SEED_STATEMENTS = [
-    """
-    INSERT INTO customers (id, name, email, country) VALUES
-        (1, 'Alice Johnson', 'alice@example.com', 'Germany'),
-        (2, 'Bob Smith', 'bob@example.com', 'USA'),
-        (3, 'Carol Williams', 'carol@example.com', 'UK'),
-        (4, 'David Brown', 'david@example.com', 'Germany'),
-        (5, 'Eve Davis', 'eve@example.com', 'France')
-    ON CONFLICT (id) DO NOTHING
-    """,
-    """
-    INSERT INTO products (id, name, category, price) VALUES
-        (1, 'SmartWidget Pro', 'Electronics', 299.99),
-        (2, 'EcoBottle', 'Home', 24.99),
-        (3, 'CloudSync License', 'Software', 49.99),
-        (4, 'FitTrack Band', 'Wearables', 149.99),
-        (5, 'DeskLamp XL', 'Home', 59.99)
-    ON CONFLICT (id) DO NOTHING
-    """,
-    """
-    INSERT INTO orders (id, customer_id, product_name, amount, order_date) VALUES
-        (1, 1, 'SmartWidget Pro', 299.99, NOW() - INTERVAL '2 days'),
-        (2, 2, 'EcoBottle', 24.99, NOW() - INTERVAL '5 days'),
-        (3, 1, 'CloudSync License', 49.99, NOW() - INTERVAL '10 days'),
-        (4, 3, 'FitTrack Band', 149.99, NOW() - INTERVAL '3 days'),
-        (5, 4, 'DeskLamp XL', 59.99, NOW() - INTERVAL '1 day'),
-        (6, 2, 'SmartWidget Pro', 299.99, NOW() - INTERVAL '15 days'),
-        (7, 5, 'EcoBottle', 24.99, NOW() - INTERVAL '6 days')
-    ON CONFLICT (id) DO NOTHING
-    """,
+CUSTOMERS = [
+    {"id": 1, "name": "Alice Johnson", "email": "alice@example.com", "country": "Germany"},
+    {"id": 2, "name": "Bob Smith", "email": "bob@example.com", "country": "USA"},
+    {"id": 3, "name": "Carol Williams", "email": "carol@example.com", "country": "UK"},
+    {"id": 4, "name": "David Brown", "email": "david@example.com", "country": "Germany"},
+    {"id": 5, "name": "Eve Davis", "email": "eve@example.com", "country": "France"},
+]
+
+PRODUCTS = [
+    {"id": 1, "name": "SmartWidget Pro", "category": "Electronics", "price": Decimal("299.99")},
+    {"id": 2, "name": "EcoBottle", "category": "Home", "price": Decimal("24.99")},
+    {"id": 3, "name": "CloudSync License", "category": "Software", "price": Decimal("49.99")},
+    {"id": 4, "name": "FitTrack Band", "category": "Wearables", "price": Decimal("149.99")},
+    {"id": 5, "name": "DeskLamp XL", "category": "Home", "price": Decimal("59.99")},
+]
+
+ORDERS = [
+    (1, 1, "SmartWidget Pro", Decimal("299.99"), 2),
+    (2, 2, "EcoBottle", Decimal("24.99"), 5),
+    (3, 1, "CloudSync License", Decimal("49.99"), 10),
+    (4, 3, "FitTrack Band", Decimal("149.99"), 3),
+    (5, 4, "DeskLamp XL", Decimal("59.99"), 1),
+    (6, 2, "SmartWidget Pro", Decimal("299.99"), 15),
+    (7, 5, "EcoBottle", Decimal("24.99"), 6),
 ]
 
 
@@ -49,8 +46,26 @@ async def seed() -> None:
     factory = get_session_factory()
 
     async with factory() as session:
-        for statement in SEED_STATEMENTS:
-            await session.execute(text(statement))
+        existing = await session.scalar(select(func.count()).select_from(Customer))
+        if existing and existing > 0:
+            logger.info("seed.skipped", reason="customers already present")
+            return
+
+        now = datetime.now(UTC)
+        for row in CUSTOMERS:
+            session.add(Customer(**row))
+        for row in PRODUCTS:
+            session.add(Product(**row))
+        for order_id, customer_id, product_name, amount, days_ago in ORDERS:
+            session.add(
+                Order(
+                    id=order_id,
+                    customer_id=customer_id,
+                    product_name=product_name,
+                    amount=amount,
+                    order_date=now - timedelta(days=days_ago),
+                )
+            )
         await session.commit()
 
     logger.info("seed.complete")

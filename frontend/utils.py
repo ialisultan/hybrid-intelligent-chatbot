@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -80,3 +81,36 @@ def get_health(*, backend_url: str | None = None, timeout: float = 10.0) -> dict
         response = client.get(f"{base}{HEALTH_PATH}")
         response.raise_for_status()
         return response.json()
+
+
+def build_curl_command(
+    query: str,
+    *,
+    conversation_id: UUID | None = None,
+    backend_url: str | None = None,
+) -> str:
+    """Build a copy-paste curl command for POST /api/v1/chat."""
+    base = (backend_url or get_backend_url()).rstrip("/")
+    payload: dict[str, Any] = {"query": query}
+    if conversation_id is not None:
+        payload["conversation_id"] = str(conversation_id)
+    body = json.dumps(payload, ensure_ascii=False)
+    return (
+        f"curl -s -X POST {base}{CHAT_PATH} \\\n"
+        f'  -H "Content-Type: application/json" \\\n'
+        f"  -d '{body}' | jq ."
+    )
+
+
+def build_all_assessment_curl_commands(
+    queries: tuple[Any, ...],
+    *,
+    backend_url: str | None = None,
+) -> str:
+    """Concatenate curl commands for a sequence of assessment queries."""
+    blocks: list[str] = []
+    for item in queries:
+        q = item.query if hasattr(item, "query") else str(item)
+        label = item.label if hasattr(item, "label") else q[:40]
+        blocks.append(f"# {label}\n{build_curl_command(q, backend_url=backend_url)}")
+    return "\n\n".join(blocks)

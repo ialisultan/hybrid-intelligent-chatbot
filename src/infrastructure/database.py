@@ -1,6 +1,7 @@
 """Async SQLAlchemy engine and session management."""
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from src.infrastructure.config import Settings
 
@@ -21,17 +23,29 @@ _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
+def _ensure_sqlite_parent_dir(settings: Settings) -> None:
+    if not settings.is_sqlite:
+        return
+    db_path = Path(settings.sqlite_path)
+    if not db_path.is_absolute():
+        db_path = Path.cwd() / db_path
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+
 def create_engine(settings: Settings) -> AsyncEngine:
     """Create (or return cached) async engine."""
     global _engine, _session_factory
     if _engine is None:
-        _engine = create_async_engine(
-            settings.async_database_url,
-            echo=settings.app_debug,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
+        _ensure_sqlite_parent_dir(settings)
+        engine_kwargs: dict = {"echo": settings.app_debug}
+        if settings.is_sqlite:
+            engine_kwargs["poolclass"] = NullPool
+            engine_kwargs["connect_args"] = {"timeout": 30}
+        else:
+            engine_kwargs["pool_pre_ping"] = True
+            engine_kwargs["pool_size"] = 10
+            engine_kwargs["max_overflow"] = 20
+        _engine = create_async_engine(settings.async_database_url, **engine_kwargs)
         _session_factory = async_sessionmaker(
             bind=_engine,
             class_=AsyncSession,

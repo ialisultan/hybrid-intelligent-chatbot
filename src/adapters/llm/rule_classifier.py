@@ -1,7 +1,7 @@
 """Rule-based classifier implementing ClassifierPort (deterministic routing)."""
 
-from src.application.chains.classifier_chain import rule_based_classify
 from src.application.ports.classifier import ClassifierPort
+from src.application.routing.rules import rule_based_classify
 from src.domain.entities.chat import QueryRoute
 
 

@@ -1,7 +1,7 @@
 """Dependency injection container — wires ports, chains, and LangGraph.
 
-Stub mode (no API keys): StubClassifier + StubSQLPipeline + StubVectorPipeline.
-Real mode: LLMQueryClassifier + LangChain pipeline adapters + FAISS/Qdrant.
+Stub mode (no API keys): RuleBasedClassifier + StubSQLPipeline + StubVectorPipeline.
+Real mode: LLMQueryClassifier + LangChain pipeline adapters + FAISS/Qdrant/Pinecone.
 """
 
 from dataclasses import dataclass, field
@@ -10,7 +10,8 @@ import structlog
 
 from src.adapters.llm.provider_factory import create_providers
 from src.adapters.llm.query_classifier import LLMQueryClassifier
-from src.adapters.llm.stub import StubClassifier, StubSQLPipeline, StubVectorPipeline
+from src.adapters.llm.rule_classifier import RuleBasedClassifier
+from src.adapters.llm.stub import StubSQLPipeline, StubVectorPipeline
 from src.adapters.persistence.postgres_adapter import PostgresAdapter
 from src.adapters.persistence.sql_pipeline_adapter import LangChainSQLPipelineAdapter
 from src.adapters.repositories.factory import create_conversation_repository
@@ -61,6 +62,33 @@ class Container:
             vector_backend=self.settings.vector_store_backend,
         )
 
+        self._wire_persistence()
+        self._wire_providers()
+
+        if self.chat_model and self.chat_model.provider == LLMProvider.STUB:
+            logger.warning("container.init.stub_mode", msg="Using stub pipelines")
+            self.classifier = self._build_classifier()
+            self.sql_pipeline = StubSQLPipeline()
+            self.vector_pipeline = StubVectorPipeline()
+        else:
+            assert self.chat_model is not None
+            self.vector_store = create_vector_store(
+                self.settings, self.embeddings.langchain_embeddings  # type: ignore[union-attr]
+            )
+            self.classifier = self._build_classifier()
+            self.sql_pipeline = self._build_sql_pipeline()
+            self.vector_pipeline = self._build_vector_pipeline()
+
+        self.orchestrator = self._build_orchestrator()
+        self.chat_use_case = ChatUseCase(
+            orchestrator=self.orchestrator,
+            conversation_repo=self.conversation_repo,
+        )
+
+        self._initialised = True
+        logger.info("container.init.complete")
+
+    def _wire_persistence(self) -> None:
         create_engine(self.settings)
         self.sql_executor = PostgresAdapter(self.settings)
         self.conversation_repo = create_conversation_repository(self.settings)
@@ -69,52 +97,43 @@ class Container:
             backend=self.settings.conversation_repository,
         )
 
+    def _wire_providers(self) -> None:
         chat_model, embeddings = create_providers(self.settings)
         self.chat_model = chat_model
         self.embeddings = embeddings
-
         logger.info(
             "container.init.providers",
             chat_provider=chat_model.provider.value,
             embedding_provider=embeddings.provider.value,
         )
 
-        if chat_model.provider == LLMProvider.STUB:
-            logger.warning("container.init.stub_mode", msg="Using stub pipelines")
-            classifier = StubClassifier()
-            sql_pipeline: SQLPipelinePort = StubSQLPipeline()
-            vector_pipeline: VectorPipelinePort = StubVectorPipeline()
-        else:
-            self.vector_store = create_vector_store(
-                self.settings, embeddings.langchain_embeddings
-            )
-            classifier = LLMQueryClassifier(chat_model, self.settings)
-            vector_pipeline = LangChainVectorPipelineAdapter(
-                self.vector_store, chat_model, self.settings
-            )
-            sql_pipeline = LangChainSQLPipelineAdapter(
-                chat_model, self.sql_executor, self.settings
-            )
+    def _build_classifier(self) -> ClassifierPort:
+        if self.chat_model and self.chat_model.provider == LLMProvider.STUB:
+            return RuleBasedClassifier()
+        return LLMQueryClassifier(self.chat_model, self.settings)  # type: ignore[arg-type]
 
-        self.classifier = classifier
-        self.sql_pipeline = sql_pipeline
-        self.vector_pipeline = vector_pipeline
+    def _build_sql_pipeline(self) -> SQLPipelinePort:
+        return LangChainSQLPipelineAdapter(
+            self.chat_model,  # type: ignore[arg-type]
+            self.sql_executor,  # type: ignore[arg-type]
+            self.settings,
+        )
 
-        orchestrator = create_orchestrator(
-            classifier=classifier,
-            sql_pipeline=sql_pipeline,
-            vector_pipeline=vector_pipeline,
+    def _build_vector_pipeline(self) -> VectorPipelinePort:
+        return LangChainVectorPipelineAdapter(
+            self.vector_store,  # type: ignore[arg-type]
+            self.chat_model,  # type: ignore[arg-type]
+            self.settings,
+        )
+
+    def _build_orchestrator(self) -> ChatOrchestrator:
+        return create_orchestrator(
+            classifier=self.classifier,  # type: ignore[arg-type]
+            sql_pipeline=self.sql_pipeline,  # type: ignore[arg-type]
+            vector_pipeline=self.vector_pipeline,  # type: ignore[arg-type]
             conversation_repo=self.conversation_repo,
             history_limit=self.settings.conversation_history_limit,
         )
-        self.orchestrator = orchestrator
-        self.chat_use_case = ChatUseCase(
-            orchestrator=orchestrator,
-            conversation_repo=self.conversation_repo,
-        )
-
-        self._initialised = True
-        logger.info("container.init.complete")
 
     async def shutdown(self) -> None:
         """Release resources on application shutdown."""
@@ -133,3 +152,10 @@ def get_container() -> Container:
     if _container is None:
         _container = Container()
     return _container
+
+
+def reset_container() -> None:
+    """Clear global container and settings cache (for tests)."""
+    global _container
+    _container = None
+    get_settings.cache_clear()

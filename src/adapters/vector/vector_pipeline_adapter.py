@@ -9,7 +9,7 @@ import structlog
 from langchain_core.runnables import Runnable
 
 from src.adapters.vector.langchain_bridge import to_retriever
-from src.application.chains.vector_rag_chain import build_vector_rag_chain
+from src.adapters.llm.chains.vector_rag_chain import build_vector_rag_chain
 from src.application.ports.chat_model import ChatModelPort
 from src.application.ports.vector_pipeline import VectorPipelinePort
 from src.application.ports.vector_store import VectorStorePort
@@ -46,12 +46,12 @@ class LangChainVectorPipelineAdapter(VectorPipelinePort):
         except VectorStoreError as exc:
             logger.warning("vector_pipeline.vector_store_error", error=str(exc))
             return {
-                "answer": f"Unable to retrieve documents: {exc}",
+                "answer": "Unable to retrieve documents. Please try again later.",
                 "sources": [],
             }
         except Exception as exc:
             logger.warning("vector_pipeline.error", error=str(exc))
             return {
-                "answer": f"Unable to process vector query: {exc}",
+                "answer": "Unable to process this question. Please try again later.",
                 "sources": [],
             }

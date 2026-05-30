@@ -6,6 +6,7 @@ import structlog
 
 from src.application.graph import build_chat_graph
 from src.application.ports.classifier import ClassifierPort
+from src.application.routing.contracts import validate_pipeline_output
 from src.application.ports.repository import ConversationRepositoryPort
 from src.application.ports.sql_pipeline import SQLPipelinePort
 from src.application.ports.vector_pipeline import VectorPipelinePort
@@ -38,6 +39,12 @@ class ChatOrchestrator:
         route_value = state.get("route")
         if not route_value:
             raise ClassificationError("Query could not be classified")
+
+        validate_pipeline_output(
+            route_value,
+            sources=state.get("sources"),
+            sql_query=state.get("sql_query"),
+        )
 
         return ChatResponse(
             answer=state.get("answer", ""),

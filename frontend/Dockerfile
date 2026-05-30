@@ -10,10 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY frontend/requirements.txt /app/frontend/requirements.txt
+COPY requirements.txt /app/frontend/requirements.txt
 RUN pip install --no-cache-dir -r /app/frontend/requirements.txt
 
-COPY frontend/ /app/frontend/
+COPY . /app/frontend/
 
 EXPOSE 8501
 

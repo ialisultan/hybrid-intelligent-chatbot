@@ -4,7 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 import src.infrastructure.di as di_module
-from main import create_app
+from src.main import create_app
 
 pytestmark = pytest.mark.integration
 

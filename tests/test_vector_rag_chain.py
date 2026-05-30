@@ -9,7 +9,7 @@ pytestmark = pytest.mark.unit
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnableLambda
 
-from src.application.chains.vector_rag_chain import build_vector_rag_chain
+from src.adapters.llm.chains.vector_rag_chain import build_vector_rag_chain
 
 
 @pytest.mark.asyncio

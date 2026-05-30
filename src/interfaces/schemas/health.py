@@ -11,6 +11,7 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     chat_provider: str = Field(description="Active chat LLM provider")
     embedding_provider: str = Field(description="Active embedding provider")
+    vector_backend: str = Field(description="Configured vector store backend")
 
 
 class ReadyResponse(BaseModel):
@@ -18,5 +19,7 @@ class ReadyResponse(BaseModel):
 
     status: Literal["ready", "degraded"]
     postgres: Literal["ok", "down"]
+    vector: Literal["ok", "down", "skipped"]
     chat_provider: str
     embedding_provider: str
+    vector_backend: str

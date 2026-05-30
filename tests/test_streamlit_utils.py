@@ -8,8 +8,11 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
+from frontend.data.assessment_queries import ALL_QUERIES
 from frontend.utils import (
     ChatResponseMeta,
+    build_all_assessment_curl_commands,
+    build_curl_command,
     get_backend_url,
     get_health,
     parse_chat_response,
@@ -134,3 +137,35 @@ def test_parse_chat_response_vector_route_enum_like():
     assert parsed.route == "vector"
     assert parsed.sources == ["return_policy.md"]
     assert parsed.conversation_id is None
+
+
+def test_build_curl_command_basic():
+    cmd = build_curl_command("Total revenue this month?", backend_url="http://localhost:8000")
+    assert "curl -s -X POST http://localhost:8000/api/v1/chat" in cmd
+    assert '"query": "Total revenue this month?"' in cmd
+    assert "conversation_id" not in cmd
+
+
+def test_build_curl_command_with_conversation_id():
+    conv_id = UUID("3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    cmd = build_curl_command(
+        "Follow up",
+        conversation_id=conv_id,
+        backend_url="http://localhost:8000",
+    )
+    assert "3fa85f64-5717-4562-b3fc-2c963f66afa6" in cmd
+
+
+def test_build_curl_command_escapes_quotes():
+    cmd = build_curl_command('Say "hello"', backend_url="http://localhost:8000")
+    assert '\\"hello\\"' in cmd or '"hello"' in cmd
+
+
+def test_build_all_assessment_curl_commands():
+    text = build_all_assessment_curl_commands(ALL_QUERIES, backend_url="http://test:8000")
+    assert text.count("curl -s -X POST") == len(ALL_QUERIES)
+    assert "Tell me about orders policy" in text
+
+
+def test_assessment_catalog_has_seven_queries():
+    assert len(ALL_QUERIES) == 7

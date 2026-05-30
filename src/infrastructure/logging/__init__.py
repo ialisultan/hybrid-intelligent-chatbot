@@ -6,10 +6,11 @@ from typing import Any
 from uuid import uuid4
 
 import structlog
-from structlog.contextvars import bind_contextvars, clear_contextvars, merge_contextvars
+from structlog.contextvars import bind_contextvars, clear_contextvars, get_contextvars, merge_contextvars
 from structlog.types import Processor
 
 CORRELATION_ID_HEADER = "X-Correlation-ID"
+REQUEST_ID_HEADER = "X-Request-ID"
 
 
 def _add_correlation_id(
@@ -70,11 +71,22 @@ def configure_logging(*, log_level: str = "INFO", json_output: bool = False) -> 
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
+def bind_request_context(request_id: str | None = None) -> str:
+    """Bind correlation_id and request_id to the current async context."""
+    rid = request_id or str(uuid4())
+    bind_contextvars(correlation_id=rid, request_id=rid)
+    return rid
+
+
 def bind_correlation_id(correlation_id: str | None = None) -> str:
-    """Bind a correlation ID to the current async context."""
-    cid = correlation_id or str(uuid4())
-    bind_contextvars(correlation_id=cid)
-    return cid
+    """Bind a correlation ID to the current async context (alias for request context)."""
+    return bind_request_context(correlation_id)
+
+
+def get_request_id() -> str:
+    """Return the current request_id from context, or 'unknown'."""
+    ctx = get_contextvars()
+    return str(ctx.get("request_id") or ctx.get("correlation_id") or "unknown")
 
 
 def clear_logging_context() -> None:

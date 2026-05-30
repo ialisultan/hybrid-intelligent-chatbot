@@ -1,23 +1,18 @@
 """Read-only PostgreSQL adapter implementing SQLExecutorPort."""
 
-import re
 from typing import Any
 
 import structlog
 from sqlalchemy import text
 
 from src.adapters.persistence.postgres_repository import PostgresRepository
+from src.application.security.sql_guard import validate_read_only_sql
 from src.application.ports.sql_executor import SQLExecutorPort
 from src.domain.exceptions.base import DatabaseError
 from src.infrastructure.config.settings import Settings
 from src.infrastructure.database import get_session_factory
 
 logger = structlog.get_logger(__name__)
-
-_FORBIDDEN = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY)\b",
-    re.IGNORECASE,
-)
 
 
 class PostgresAdapter(SQLExecutorPort):
@@ -36,12 +31,7 @@ class PostgresAdapter(SQLExecutorPort):
         sql: str,
         params: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        normalized = sql.strip().rstrip(";")
-        if not normalized.upper().startswith("SELECT"):
-            raise DatabaseError("Only SELECT queries are allowed")
-        if _FORBIDDEN.search(normalized):
-            raise DatabaseError("Query contains forbidden SQL keywords")
-
+        normalized = validate_read_only_sql(sql)
         limited_sql = f"SELECT * FROM ({normalized}) AS subquery LIMIT {self._max_rows}"
         factory = get_session_factory()
 

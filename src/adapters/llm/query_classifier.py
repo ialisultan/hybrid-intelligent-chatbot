@@ -2,12 +2,10 @@
 
 import structlog
 
-from src.application.chains.classifier_chain import (
-    build_classifier_chain,
-    rule_based_classify,
-)
+from src.adapters.llm.chains.classifier_chain import build_classifier_chain
 from src.application.ports.chat_model import ChatModelPort
 from src.application.ports.classifier import ClassifierPort
+from src.application.routing.rules import detect_policy_intent, rule_based_classify
 from src.domain.entities.chat import QueryRoute, RouteType
 from src.infrastructure.config.settings import Settings
 from src.interfaces.schemas.classification import ClassificationResultSchema
@@ -16,7 +14,7 @@ logger = structlog.get_logger(__name__)
 
 
 class LLMQueryClassifier(ClassifierPort):
-    """Hybrid classifier: LLM structured output + rule-based fallback."""
+    """Hybrid classifier: policy pre-check → LLM → rule-based post-correction."""
 
     def __init__(self, chat_model: ChatModelPort, settings: Settings) -> None:
         self._chain = build_classifier_chain(chat_model.langchain_model)
@@ -24,14 +22,34 @@ class LLMQueryClassifier(ClassifierPort):
         self._provider = chat_model.provider.value
 
     async def classify(self, query: str) -> QueryRoute:
+        if detect_policy_intent(query):
+            route = QueryRoute(
+                route=RouteType.VECTOR,
+                confidence=0.88,
+                reasoning="policy intent override (pre-LLM)",
+            )
+            logger.info(
+                "classifier.policy_override",
+                route=route.route.value,
+                provider=self._provider,
+            )
+            return route
+
         try:
             result = await self._chain.ainvoke({"query": query})
             route_result = self._to_query_route(result)
 
-            if route_result.confidence < self._threshold:
+            needs_fallback = (
+                route_result.confidence < self._threshold
+                or (
+                    route_result.route == RouteType.SQL
+                    and detect_policy_intent(query)
+                )
+            )
+            if needs_fallback:
                 fallback = rule_based_classify(query)
                 logger.info(
-                    "classifier.fallback.low_confidence",
+                    "classifier.fallback",
                     llm_route=route_result.route.value,
                     fallback_route=fallback.route.value,
                     confidence=route_result.confidence,

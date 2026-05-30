@@ -10,7 +10,7 @@ import json
 import structlog
 from langchain_core.runnables import Runnable
 
-from src.application.chains.sql_chain import SQLSchema, build_sql_chain
+from src.adapters.llm.chains.sql_chain import SQLSchema, build_sql_chain
 from src.application.ports.chat_model import ChatModelPort
 from src.application.ports.sql_executor import SQLExecutorPort
 from src.application.ports.sql_pipeline import SQLPipelinePort
@@ -32,7 +32,10 @@ class LangChainSQLPipelineAdapter(SQLPipelinePort):
     ) -> None:
         self._executor = sql_executor
         self._chat_model = chat_model
-        self._chain: Runnable = build_sql_chain(chat_model.langchain_model)
+        self._chain: Runnable = build_sql_chain(
+            chat_model.langchain_model,
+            dialect=_settings.sql_dialect,
+        )
 
     async def run(self, query: str) -> dict:
         logger.info("sql_pipeline.run", query=query[:80])
@@ -50,13 +53,13 @@ class LangChainSQLPipelineAdapter(SQLPipelinePort):
         except DatabaseError as exc:
             logger.warning("sql_pipeline.database_error", error=str(exc))
             return {
-                "answer": f"Unable to process SQL query: {exc}",
+                "answer": "Unable to process this SQL query. Please rephrase your question.",
                 "sql_query": None,
             }
         except Exception as exc:
             logger.warning("sql_pipeline.error", error=str(exc))
             return {
-                "answer": f"Unable to process SQL query: {exc}",
+                "answer": "Unable to process this SQL query. Please try again later.",
                 "sql_query": None,
             }
 

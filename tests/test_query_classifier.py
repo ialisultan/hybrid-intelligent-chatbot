@@ -7,7 +7,7 @@ import pytest
 pytestmark = pytest.mark.unit
 
 from src.adapters.llm.query_classifier import LLMQueryClassifier
-from src.application.chains.classifier_chain import rule_based_classify
+from src.application.routing.rules import rule_based_classify
 from src.domain.entities.chat import RouteType
 from src.domain.entities.llm import LLMProvider
 from src.infrastructure.config.settings import Settings

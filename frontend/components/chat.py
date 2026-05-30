@@ -22,6 +22,8 @@ def init_session_state() -> None:
         st.session_state.conversation_id = None
     if "pending_query" not in st.session_state:
         st.session_state.pending_query = None
+    if "dark_mode" not in st.session_state:
+        st.session_state.dark_mode = False
 
 
 def _meta_from_parsed(parsed: Any) -> dict[str, Any]:
@@ -34,14 +36,14 @@ def _meta_from_parsed(parsed: Any) -> dict[str, Any]:
 
 
 def render_message_history() -> None:
-    for msg in st.session_state.messages:
+    for i, msg in enumerate(st.session_state.messages):
         is_user = msg["role"] == "user"
         role = msg["role"]
         avatar = USER_AVATAR if is_user else ASSISTANT_AVATAR
         with st.chat_message(name=role, avatar=avatar):
             st.markdown(msg["content"])
             if not is_user and msg.get("meta"):
-                render_response_meta(msg["meta"])
+                render_response_meta(msg["meta"], index=i)
 
 
 def _send_query(query: str) -> None:
@@ -79,6 +81,13 @@ def _send_query(query: str) -> None:
     except Exception as exc:
         st.session_state.messages.pop()
         st.error(f"Request failed: {exc}")
+
+
+def get_last_user_query() -> str | None:
+    for msg in reversed(st.session_state.messages):
+        if msg["role"] == "user":
+            return msg["content"]
+    return None
 
 
 def render_chat_input() -> None:

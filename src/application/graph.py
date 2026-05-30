@@ -21,6 +21,7 @@ from src.application.ports.classifier import ClassifierPort
 from src.application.ports.repository import ConversationRepositoryPort
 from src.application.ports.sql_pipeline import SQLPipelinePort
 from src.application.ports.vector_pipeline import VectorPipelinePort
+from src.application.routing.contracts import validate_pipeline_output
 from src.domain.entities.chat import RouteType
 from src.domain.exceptions.base import RoutingViolationError
 
@@ -103,22 +104,36 @@ def build_chat_graph(
         contextual_query = state.get("contextual_query") or state["query"]
         logger.info("graph.sql_pipeline.start", query=contextual_query[:80])
         result = await sql_pipeline.run(contextual_query)
+        sources: list[str] = []
+        sql_query = result.get("sql_query")
+        validate_pipeline_output(
+            RouteType.SQL.value,
+            sources=sources,
+            sql_query=sql_query,
+        )
         return {
             **state,
             "answer": result["answer"],
-            "sql_query": result.get("sql_query"),
-            "sources": [],
+            "sql_query": sql_query,
+            "sources": sources,
         }
 
     async def vector_node(state: ChatState) -> ChatState:
         contextual_query = state.get("contextual_query") or state["query"]
         logger.info("graph.vector_pipeline.start", query=contextual_query[:80])
         result = await vector_pipeline.run(contextual_query)
+        sources = result.get("sources", [])
+        sql_query = None
+        validate_pipeline_output(
+            RouteType.VECTOR.value,
+            sources=sources,
+            sql_query=sql_query,
+        )
         return {
             **state,
             "answer": result["answer"],
-            "sources": result.get("sources", []),
-            "sql_query": None,
+            "sources": sources,
+            "sql_query": sql_query,
         }
 
     builder = StateGraph(ChatState)

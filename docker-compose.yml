@@ -19,6 +19,7 @@ services:
       start_period: 10s
 
   qdrant:
+    profiles: ["qdrant"]
     image: qdrant/qdrant:v1.12.5
     container_name: hybrid-chatbot-qdrant
     restart: unless-stopped
@@ -26,6 +27,12 @@ services:
       - "${QDRANT_PORT:-6333}:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   app:
     build:
@@ -37,20 +44,26 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chatbot}:${POSTGRES_PASSWORD:-chatbot_secret}@postgres:5432/${POSTGRES_DB:-chatbot}
-      VECTOR_STORE_BACKEND: qdrant
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
+      POSTGRES_HOST: postgres
+      VECTOR_STORE_BACKEND: ${VECTOR_STORE_BACKEND:-faiss}
+      QDRANT_HOST: ${QDRANT_HOST:-qdrant}
+      QDRANT_PORT: ${QDRANT_PORT:-6333}
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_REQUESTS: "10"
+      RATE_LIMIT_WINDOW_SECONDS: "60"
+      LOG_JSON: "true"
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
-      - ./data:/app/data:ro
+      - ./data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
+        required: false
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -58,8 +71,8 @@ services:
 
   streamlit:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: hybrid-chatbot-streamlit
     restart: unless-stopped
     env_file:
@@ -71,6 +84,12 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 25s
 
 volumes:
   postgres_data:

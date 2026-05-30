@@ -8,6 +8,7 @@ from src.adapters.llm.provider_factory import create_embeddings
 from src.adapters.vector.document_loader import load_and_chunk_documents
 from src.adapters.vector.faiss_adapter import FaissVectorAdapter
 from src.adapters.vector.factory import create_vector_store
+from src.adapters.vector.pinecone_adapter import PineconeVectorAdapter
 from src.adapters.vector.qdrant_adapter import QdrantVectorAdapter
 from src.domain.entities.llm import LLMProvider
 from src.infrastructure.config import get_settings
@@ -41,7 +42,9 @@ async def index_documents(data_dir: str = "data", *, force: bool = False) -> Non
         logger.warning("index.no_documents", data_dir=data_dir)
         return
 
-    if isinstance(vector_store, FaissVectorAdapter | QdrantVectorAdapter):
+    if isinstance(
+        vector_store, FaissVectorAdapter | QdrantVectorAdapter | PineconeVectorAdapter
+    ):
         await vector_store.upsert_langchain_documents(documents)
     else:
         await vector_store.upsert_documents(
@@ -68,6 +71,9 @@ def _is_already_indexed(vector_store: object, settings) -> bool:
             return info.points_count > 0
         except Exception:
             return False
+
+    if isinstance(vector_store, PineconeVectorAdapter):
+        return vector_store.vector_count() > 0
 
     return False
 

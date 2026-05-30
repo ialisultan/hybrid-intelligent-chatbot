@@ -7,7 +7,7 @@ import pytest
 pytestmark = pytest.mark.unit
 
 from src.adapters.persistence.sql_pipeline_adapter import LangChainSQLPipelineAdapter
-from src.application.chains.sql_chain import SQLSchema
+from src.adapters.llm.chains.sql_chain import SQLSchema
 from src.domain.entities.llm import LLMProvider
 from src.domain.exceptions.base import DatabaseError
 from src.infrastructure.config.settings import Settings
@@ -67,7 +67,8 @@ async def test_database_error_returns_safe_message(adapter):
     result = await pipeline.run("DROP everything")
 
     assert result["sql_query"] is None
-    assert "Unable to process SQL query" in result["answer"]
+    assert "Unable to process this SQL query" in result["answer"]
+    assert "DROP" not in result["answer"]
 
 
 @pytest.mark.asyncio

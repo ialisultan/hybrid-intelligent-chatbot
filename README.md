@@ -1,6 +1,73 @@
 # Hybrid Intelligent Chatbot
 
-Production-ready FastAPI backend for **GenAI Engineer Assessment II** — a hybrid chatbot that routes each query down exactly one path: **SQL** (structured PostgreSQL data) or **Vector** (semantic document search). Pipelines never mix.
+**Production-grade hybrid RAG API** — routes every query down exactly one path: **SQL** (structured data) or **Vector** (document search). Pipelines never mix.
+
+Built for GenAI Engineer Assessment II with hexagonal architecture, LangGraph orchestration, multi-provider LLM support, and a Streamlit assessment UI.
+
+---
+
+## Quick Start
+
+**Prerequisites:** Python 3.11+, `make`. Docker is optional (required only for the Docker path).
+
+Copy environment config and add your API key:
+
+```bash
+cp .env.example .env   # then set OPENAI_API_KEY
+```
+
+### Local — no Docker
+
+SQLite + FAISS on disk. No containers, no Postgres install.
+
+```bash
+make local
+```
+
+Then start the services (two terminals):
+
+```bash
+make run        # Terminal 1 — API  → http://localhost:8000/docs
+make streamlit  # Terminal 2 — UI   → http://localhost:8501
+```
+
+### Docker — full stack
+
+PostgreSQL + FastAPI + Streamlit + FAISS. Requires Docker Desktop (or Docker Engine + Compose v2).
+
+```bash
+make docker
+```
+
+| Endpoint | URL |
+|----------|-----|
+| OpenAPI / Swagger | http://localhost:8000/docs |
+| Readiness probe | http://localhost:8000/ready |
+| Streamlit UI | http://localhost:8501 |
+
+Both paths bootstrap automatically: **migrate → seed → index documents**. Run `make doctor` (local) or `make down && make docker` (Docker) if anything looks off.
+
+**Vector backend variants (Docker only):**
+
+```bash
+make up-qdrant    # adds Qdrant container (Compose profile)
+make up-pinecone  # managed Pinecone (set PINECONE_* in .env)
+```
+
+---
+
+## Deployment Modes
+
+| | **Local** (`make local`) | **Docker** (`make docker`) |
+|--|--------------------------|----------------------------|
+| **Command** | `make local` | `make docker` |
+| **Structured DB** | SQLite (`data/local.db`) | PostgreSQL 16 (container) |
+| **Vector store** | FAISS (`data/faiss/`) | FAISS (bind-mounted `./data`) |
+| **API** | `make run` (hot reload) | Uvicorn in `app` container |
+| **UI** | `make streamlit` | `streamlit` container |
+| **Docker required** | No | Yes |
+
+Compose injects `DATABASE_URL=postgresql+asyncpg://…@postgres:5432/chatbot`, overriding any local SQLite defaults in `.env`.
 
 ---
 
@@ -8,48 +75,62 @@ Production-ready FastAPI backend for **GenAI Engineer Assessment II** — a hybr
 
 | Capability | Implementation |
 |------------|----------------|
-| Query routing | LLM classifier + rule-based fallback for edge cases |
-| SQL pipeline | LangChain NL→SQL → read-only Postgres execution → NL answer |
-| Vector pipeline | FAISS (local) or Qdrant (Docker) RAG with grounded responses |
-| Multi-turn chat | Postgres-backed history (`conversation_messages`) loaded in LangGraph before classification |
-| Streamlit UI | Chat interface with Quick Test buttons, routing details, session management |
+| Query routing | LLM structured classifier + pure rule fallback |
+| SQL pipeline | LangChain NL→SQL → read-only execution → NL answer |
+| Vector pipeline | FAISS / Qdrant / Pinecone RAG with source attribution |
+| Multi-turn chat | DB-backed `conversation_messages` via LangGraph `load_history` |
+| Streamlit UI | Quick Tests, Demo Script, routing badges, session management |
 | Multi-provider LLM | OpenAI, Anthropic, Google — auto-selected by API key |
 
 ---
 
-## Architecture Decisions
+## Production Features
 
-### Why Hexagonal (Ports & Adapters)
-
-The **domain** layer holds pure entities and exceptions — no LangChain, LangGraph, or database imports. **Application** defines ports (interfaces) and orchestration. **Adapters** implement those ports for Postgres, Qdrant, OpenAI, etc.
-
-This gives us:
-
-- **Swappable backends** — switch FAISS ↔ Qdrant or OpenAI ↔ Anthropic via config, not refactors
-- **Testability** — stub pipelines and mock ports without touching business logic
-- **Clear boundaries** — infrastructure details never leak into routing rules
-
-### Why LangGraph
-
-Routing is a **state machine**, not a simple `if/else`:
-
-```
-START → load_history → classify → [sql_pipeline | vector_pipeline] → END
-```
-
-LangGraph makes the flow explicit and auditable:
-
-- Each node is a single responsibility (load history, classify, run pipeline)
-- Conditional edges enforce **strict mutual exclusion** — a query never hits both pipelines
-- Multi-turn memory is a first-class `load_history` node, not an afterthought
-
-### Why LangChain LCEL (inside adapters only)
-
-LangChain is confined to **adapters** — structured classifier output, SQL generation, and RAG chains. The application layer depends on ports, not LangChain types.
+| Feature | Details |
+|---------|---------|
+| Orchestration | LangGraph: `load_history` → `classify` → exactly one of `sql_pipeline` \| `vector_pipeline` |
+| Routing policy | Hybrid classifier + policy pre-check + confidence threshold fallback |
+| Observability | structlog JSON logs — `request_id`, `X-Correlation-ID`, `duration_ms`, `client_ip` |
+| Health probes | `GET /health` (liveness) · `GET /ready` (readiness, **503** when DB/vector degraded) |
+| Security | Rate limiting, CORS, security headers, SQL guardrails, sanitized error responses |
+| Stub profile | No API keys → rule-based classifier + stub pipelines (same routing rules) |
+| Quality gate | `make all` — ruff + mypy + pytest with coverage |
 
 ---
 
-## Routing Strategy
+## Security
+
+| Control | Details |
+|---------|---------|
+| Rate limiting | SlowAPI on `POST /api/v1/chat` — **10 req/min/IP** default (`RATE_LIMIT_*`) |
+| CORS | `CORS_ORIGINS`; permissive only when `APP_DEBUG=true` |
+| Security headers | `X-Content-Type-Options`, `X-Frame-Options`, `CSP`, `Referrer-Policy` |
+| SQL guardrails | SELECT/WITH only, keyword blacklist, single statement — [`sql_guard.py`](src/application/security/sql_guard.py) |
+| Error responses | `{ error, message, request_id }` — no stack traces leaked |
+| Dependency audit | `make security-audit` — [pip-audit](https://pypi.org/project/pip-audit/) on `requirements.txt` |
+
+Docker Compose enables rate limiting, `/ready` probes, and `restart: unless-stopped` on all services.
+
+---
+
+## Architecture
+
+### Hexagonal (Ports & Adapters)
+
+```
+domain/          Pure entities & exceptions — zero framework imports
+application/     Ports, LangGraph orchestrator, pure routing rules
+adapters/        FastAPI, LangChain chains, SQL/vector/LLM implementations
+infrastructure/  Config, DI, migrations, seed, indexing
+```
+
+- **Swappable backends** — FAISS ↔ Qdrant ↔ Pinecone, OpenAI ↔ Anthropic ↔ Google via config
+- **Testability** — stub pipelines and mock ports without touching business logic
+- **Enforced boundaries** — `tests/test_hexagonal_boundaries.py` fails on forbidden imports in `application/`
+
+LangChain LCEL lives exclusively under `src/adapters/llm/chains/`. Routing rules are pure Python in `src/application/routing/`.
+
+### LangGraph state machine
 
 ```mermaid
 flowchart TD
@@ -62,34 +143,9 @@ flowchart TD
     vectorNode --> endNode
 ```
 
-| Route | When | Returns |
-|-------|------|---------|
-| **SQL** | Aggregations, counts, filters, rankings, revenue, dates | `answer`, `sql_query`, `sources: []` |
-| **Vector** | Policies, FAQs, product docs, warranty, support | `answer`, `sources`, `sql_query: null` |
+Each pipeline node validates output contracts: SQL returns `sources: []`; Vector returns `sql_query: null`. Mutual exclusion is enforced in graph edges and tested in `tests/test_graph_mutual_exclusion.py`.
 
-**Classifier:** LLM structured output (primary) → rule-based fallback when confidence is low or LLM fails.
-
-**Stub mode** (no API keys): routing uses the same `rule_based_classify` logic as the production fallback, so assessment edge cases behave identically.
-
-**Edge-case rule:** Queries mentioning table words (`orders`, `customers`) but asking about **policy/process** → **Vector**.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| API | FastAPI, Pydantic v2, Uvicorn |
-| Orchestration | LangGraph |
-| LLM / RAG | LangChain LCEL |
-| Structured data | PostgreSQL 16, SQLAlchemy async, Alembic |
-| Vector search | FAISS (local) / Qdrant (Docker) |
-| Config | pydantic-settings |
-| UI | Streamlit (`frontend/`) |
-
----
-
-## Full-Stack Architecture
+### Full stack
 
 ```mermaid
 flowchart TB
@@ -103,14 +159,13 @@ flowchart TB
         Graph[LangGraph]
     end
     subgraph data [Data layer]
-        PG[(PostgreSQL)]
-        VS[FAISS or Qdrant]
+        DB[(SQLite / PostgreSQL)]
+        VS[FAISS / Qdrant / Pinecone]
     end
     UI -->|httpx server-side| ChatEP
     API_Client --> ChatEP
     ChatEP --> UseCase --> Graph
-    Graph -->|history| PG
-    Graph -->|sql_pipeline| PG
+    Graph -->|history + sql| DB
     Graph -->|vector_pipeline| VS
 ```
 
@@ -120,68 +175,68 @@ Streamlit calls the API **server-side** (`BACKEND_URL`), so browser CORS is not 
 
 | Service | Port | Role |
 |---------|------|------|
-| `postgres` | 5432 | Structured data + `conversation_messages` history |
-| `qdrant` | 6333 | Vector index (Docker default) |
-| `app` | 8000 | FastAPI + LangGraph orchestration |
+| `postgres` | 5432 | Structured data + conversation history |
+| `qdrant` | 6333 | Vector index (`make up-qdrant`, Compose profile) |
+| `app` | 8000 | FastAPI + LangGraph |
 | `streamlit` | 8501 | Assessment demo UI |
 
 ---
 
-## Ports Reference
+## Routing
 
-| Port | Adapter |
-|------|---------|
-| `ClassifierPort` | `LLMQueryClassifier` / `RuleBasedClassifier` (tests) |
-| `SQLPipelinePort` | `LangChainSQLPipelineAdapter` |
-| `VectorPipelinePort` | `LangChainVectorPipelineAdapter` |
-| `SQLExecutorPort` | `PostgresAdapter` |
-| `VectorStorePort` | `FaissVectorAdapter` / `QdrantVectorAdapter` |
-| `ChatModelPort` | OpenAI / Anthropic / Google providers |
-| `EmbeddingPort` | OpenAI / Google providers |
-| `ConversationRepositoryPort` | `PostgresConversationRepository` (default) / `InMemoryConversationRepository` |
+| Route | When | Response shape |
+|-------|------|----------------|
+| **SQL** | Aggregations, counts, filters, revenue, dates | `answer`, `sql_query`, `sources: []` |
+| **Vector** | Policies, FAQs, product docs, warranty, support | `answer`, `sources`, `sql_query: null` |
+
+**Hybrid classifier** (`LLMQueryClassifier`):
+
+1. Policy-intent pre-check → Vector (skip LLM for known edge cases)
+2. LLM structured classify
+3. Rule-based fallback when confidence is low, LLM returns SQL on a policy query, or LLM fails
+
+**Edge-case rule:** Queries mentioning table words (`orders`, `customers`) but asking about **policy/process** → **Vector**.
+
+Pure rules: `src/application/routing/rules.py` · Contracts: `src/application/routing/contracts.py`
 
 ---
 
-## Quick Start — Docker (recommended for assessment)
+## Configurable Vector Store
 
-```bash
-cp .env.example .env          # set OPENAI_API_KEY
-make build && make up         # starts postgres + qdrant + app, migrates, seeds, indexes
-open http://localhost:8000/docs
+Switch via `VECTOR_STORE_BACKEND` — factory in [`src/adapters/vector/factory.py`](src/adapters/vector/factory.py). Re-index after changing backend.
+
+| Backend | Use case | Make target |
+|---------|----------|-------------|
+| **FAISS** | Local + default Docker | `make local` / `make docker` |
+| **Qdrant** | Production-like vector service | `make up-qdrant` |
+| **Pinecone** | Managed cloud index | `make up-pinecone` |
+
+---
+
+## Streamlit UI
+
+After starting the API and UI (local or Docker):
+
+| Feature | Description |
+|---------|-------------|
+| **Quick Tests** | One-click buttons for all 7 assessment queries |
+| **Demo Script** | Numbered walkthrough with Run per step + cURL blocks |
+| **Settings** | Dark mode, backend URL, conversation ID, new session |
+| **Chat** | Route badges (SQL / VECTOR), confidence pill, Show SQL, source chips |
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Hybrid Intelligent Chatbot              [ Online | Offline ] │
+├──────────────┬──────────────────────────────────────────────────┤
+│ Sidebar      │  Chat                                            │
+│ [Quick Tests]│  👤 user bubble                                  │
+│ [Settings]   │  🤖 assistant + [SQL|VECTOR] badge · confidence  │
+│ [Demo Script]│  □ Show SQL · source chips                       │
+│ Clear chat   │  [ Ask about revenue, policies… ]                │
+└──────────────┴──────────────────────────────────────────────────┘
 ```
 
-`make up` waits for health checks, then runs migrations, seed data, and document indexing automatically.
-
-Open the Streamlit UI at **http://localhost:8501** (sidebar includes SQL, Vector, and edge-case demo buttons).
-
-## Quick Start — Streamlit (local backend)
-
-```bash
-make setup
-make postgres-up && make local-init   # or use Docker Postgres only
-make run                              # terminal 1 — API on :8000
-make streamlit                        # terminal 2 — UI on :8501
-```
-
-Set `BACKEND_URL` in `.env` if the API is not on `http://localhost:8000`.
-
-### Streamlit UI features
-
-- **Quick Test** sidebar — all assessment SQL, Vector, and edge-case queries
-- **Routing details** — route, confidence, generated SQL, document sources per reply
-- **Settings** — backend URL, active LLM providers (read-only), conversation ID, new session
-- **Multi-turn** — reuses `conversation_id` from the API across messages in the same session
-
-## Quick Start — Local (no app container)
-
-```bash
-make setup                    # .venv + dependencies
-make postgres-up              # Postgres on localhost:5432
-make local-init               # migrate + seed + FAISS index
-make run                      # uvicorn with hot reload
-```
-
-Run `make doctor` if anything fails.
+Optional portfolio screenshot: save as [`docs/images/streamlit-demo.png`](docs/images/streamlit-demo.png) after `make docker`.
 
 ---
 
@@ -191,26 +246,16 @@ Run `make doctor` if anything fails.
 |----------|---------|-------------|
 | `OPENAI_API_KEY` | — | OpenAI chat + embeddings |
 | `LLM_PROVIDER` | `auto` | `auto` \| `openai` \| `anthropic` \| `google` |
-| `VECTOR_STORE_BACKEND` | `faiss` | `faiss` (local) \| `qdrant` (Docker) |
-| `CLASSIFIER_CONFIDENCE_THRESHOLD` | `0.7` | Fallback to rules below this |
-| `CONVERSATION_HISTORY_LIMIT` | `10` | Max prior turns loaded into context |
-| `CONVERSATION_REPOSITORY` | `postgres` | `postgres` \| `memory` (conversation storage) |
-| `BACKEND_URL` | `http://localhost:8000` | API URL for Streamlit (`http://app:8000` in Docker) |
-| `STREAMLIT_PORT` | `8501` | Streamlit local / compose port |
+| `VECTOR_STORE_BACKEND` | `faiss` | `faiss` \| `qdrant` \| `pinecone` |
+| `DATABASE_URL` | *(SQLite)* | Unset → `sqlite+aiosqlite:///data/local.db`; Docker sets PostgreSQL |
+| `SQLITE_PATH` | `data/local.db` | SQLite file when `DATABASE_URL` is unset |
+| `CONVERSATION_REPOSITORY` | `postgres` | `postgres` \| `memory` (tests / ephemeral) |
+| `CLASSIFIER_CONFIDENCE_THRESHOLD` | `0.7` | Rule fallback below this confidence |
+| `RATE_LIMIT_ENABLED` | `true` | Rate limit `POST /api/v1/chat` |
+| `BACKEND_URL` | `http://localhost:8000` | API URL for Streamlit |
 | `APP_DEBUG` | `false` | Enables `POST /api/v1/classify` debug endpoint |
 
-See [`.env.example`](.env.example) for the full list.
-
----
-
-## Multi-Turn Conversations
-
-1. Send a message without `conversation_id` — the API returns a new UUID.
-2. Send follow-up messages with the same `conversation_id`.
-3. `ChatUseCase` persists user and assistant turns to PostgreSQL (`conversation_messages`).
-4. LangGraph `load_history` loads recent turns and builds a `contextual_query` for classification and pipelines.
-
-History survives API restarts when `CONVERSATION_REPOSITORY=postgres` (default). Set `CONVERSATION_REPOSITORY=memory` for ephemeral storage (used in unit tests).
+See [`.env.example`](.env.example) for the full list including Pinecone, Qdrant, and CORS.
 
 ---
 
@@ -218,30 +263,28 @@ History survives API restarts when `CONVERSATION_REPOSITORY=postgres` (default).
 
 ### POST /api/v1/chat
 
-**Request:**
 ```json
-{
-  "query": "What is the total revenue this month?",
-  "conversation_id": null
-}
+{ "query": "What is the total revenue this month?", "conversation_id": null }
 ```
 
-**SQL response example:**
+**SQL response:**
+
 ```json
 {
   "answer": "Total revenue this month is $12,450 across 47 orders.",
   "route": "sql",
   "confidence": 0.92,
   "sources": [],
-  "sql_query": "SELECT SUM(amount) FROM orders WHERE order_date >= date_trunc('month', CURRENT_DATE)",
+  "sql_query": "SELECT SUM(amount) FROM orders WHERE …",
   "conversation_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 }
 ```
 
-**Vector response example:**
+**Vector response:**
+
 ```json
 {
-  "answer": "We offer a 30-day return policy for all products in original condition.",
+  "answer": "We offer a 30-day return policy…",
   "route": "vector",
   "confidence": 0.94,
   "sources": ["return_policy.md"],
@@ -250,76 +293,13 @@ History survives API restarts when `CONVERSATION_REPOSITORY=postgres` (default).
 }
 ```
 
-**Edge-case response example:**
-```json
-{
-  "answer": "Our orders policy covers processing times, cancellations, and refund eligibility...",
-  "route": "vector",
-  "confidence": 0.87,
-  "sources": ["faq_support.md"],
-  "sql_query": null,
-  "conversation_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
-}
-```
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Liveness — process up, provider info |
+| `GET /ready` | Readiness — DB + vector store (**503** if degraded) |
+| `POST /api/v1/classify` | Debug routing (`APP_DEBUG=true`) |
 
-### GET /health — liveness (provider info)
-
-### GET /ready — readiness (Postgres + providers)
-
-### POST /api/v1/classify — debug routing (`APP_DEBUG=true`)
-
-```bash
-curl -X POST http://localhost:8000/api/v1/classify \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Tell me about orders policy"}'
-```
-
-```json
-{
-  "route": "vector",
-  "route_label": "VECTOR",
-  "confidence": 0.88,
-  "reasoning": "policy intent despite SQL-table words"
-}
-```
-
----
-
-## Assessment Demo Script
-
-Replace `localhost:8000` if needed. Reuse `conversation_id` from responses for multi-turn demos.
-
-```bash
-# SQL — revenue
-curl -s -X POST http://localhost:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Total revenue this month?"}' | jq .
-
-# SQL — top customers
-curl -s -X POST http://localhost:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Top 5 customers by spending"}' | jq .
-
-# Vector — return policy
-curl -s -X POST http://localhost:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What is your return policy?"}' | jq .
-
-# Edge — orders policy (expect route: vector)
-curl -s -X POST http://localhost:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Tell me about orders policy"}' | jq .
-
-# Edge — refund issues (expect route: vector)
-curl -s -X POST http://localhost:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Customers refund issues"}' | jq .
-
-# Multi-turn — pass conversation_id from prior response
-curl -s -X POST http://localhost:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What about warranty?", "conversation_id": "<uuid>"}' | jq .
-```
+### Assessment queries
 
 | Query | Expected `route` |
 |-------|------------------|
@@ -331,63 +311,28 @@ curl -s -X POST http://localhost:8000/api/v1/chat \
 | Tell me about orders policy | `vector` |
 | Customers refund issues | `vector` |
 
-The same queries are available as **sidebar buttons** in the Streamlit UI (`make streamlit` or http://localhost:8501 after `make up`).
-
----
-
-## Project Structure
-
+```bash
+curl -s -X POST http://localhost:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Tell me about orders policy"}' | jq .
 ```
-├── src/                       # FastAPI + hexagonal backend
-├── frontend/
-│   ├── app.py                 # Streamlit chat UI
-│   ├── components/
-│   │   ├── sidebar.py         # Demo queries + backend status
-│   │   └── chat.py            # Chat history + Send
-│   ├── utils.py               # HTTP client for /api/v1/chat
-│   ├── Dockerfile
-│   └── requirements.txt
-├── Makefile
-├── Dockerfile                 # Backend API image
-├── docker-compose.yml         # postgres, qdrant, app, streamlit
-├── requirements.txt
-├── .env.example
-└── README.md
 
-src/
-├── domain/                    # Entities & exceptions (pure Python)
-├── application/
-│   ├── ports/                 # Hexagonal interfaces
-│   ├── graph.py               # LangGraph state machine
-│   ├── orchestrator.py        # ChatOrchestrator facade
-│   ├── context.py             # Multi-turn context helpers
-│   ├── chains/                # LangChain LCEL chain builders
-│   └── usecases/chat.py       # Chat use case
-├── adapters/
-│   ├── persistence/
-│   │   ├── postgres_adapter.py
-│   │   └── sql_pipeline_adapter.py
-│   ├── vector/
-│   │   ├── faiss_adapter.py / qdrant_adapter.py
-│   │   └── vector_pipeline_adapter.py
-│   ├── llm/                   # Classifier, providers, OpenAI adapter
-│   ├── api/routes/            # FastAPI endpoints
-│   └── repositories/          # Postgres + in-memory conversation adapters
-├── infrastructure/            # DI container, config, seed, indexing
-└── interfaces/schemas/        # Pydantic API models
-```
+Same queries are available as sidebar buttons in the Streamlit UI.
 
 ---
 
 ## Development
 
 ```bash
+make all               # Quality gate: ruff + mypy + pytest (run before submit)
 make test              # Full suite with coverage
 make test-unit         # Unit tests only
-make test-integration  # API integration tests
 make lint              # Ruff + mypy
 make format            # Auto-format
+make security-audit    # pip-audit CVE scan
 ```
+
+Key test modules: `test_routing_rules.py`, `test_classifier_hybrid.py`, `test_graph_mutual_exclusion.py`, `test_sql_guard.py`, `test_hexagonal_boundaries.py`.
 
 ---
 
@@ -395,21 +340,47 @@ make format            # Auto-format
 
 | Target | Description |
 |--------|-------------|
-| `setup` | Create `.venv` and install dev dependencies |
-| `build` | Build Docker images |
-| `up` | Start stack + migrate + seed + index (API + Streamlit) |
-| `down` | Stop containers |
-| `local-init` | Local migrate + seed + FAISS index |
+| **`local`** | **One-shot local bootstrap** — venv + SQLite migrate/seed + FAISS index |
+| **`docker`** | **One-shot Docker bootstrap** — build + Postgres + API + Streamlit + FAISS |
 | `run` | Local uvicorn with hot reload |
-| `backend` | Alias for `run` |
-| `backend-up` | Start Postgres, Qdrant, and API containers only |
-| `streamlit` | Run Streamlit UI locally (needs API on `BACKEND_URL`) |
-| `stop-streamlit` | Stop local Streamlit on `STREAMLIT_PORT` (default 8501) |
-| `stop-backend` | Stop local uvicorn on `APP_PORT` (default 8000) |
-| `logs-streamlit` | Tail Streamlit container logs |
-| `doctor` | Diagnose local setup |
+| `streamlit` | Local Streamlit UI (requires API on `BACKEND_URL`) |
+| `doctor` | Diagnose local setup (venv, DB, vector backend) |
+| `down` | Stop Docker containers |
+| `up-qdrant` / `up-pinecone` | Docker with alternate vector backends |
 | `migrate` / `seed` / `index` | Individual bootstrap steps (Docker) |
-| `test` / `lint` / `format` | Quality gates |
+| `stop-backend` / `stop-streamlit` | Free ports 8000 / 8501 |
+| `logs` / `logs-streamlit` | Tail container logs |
+
+Run `make help` for the full list.
+
+---
+
+## Project Structure
+
+```
+├── src/
+│   ├── main.py                     # FastAPI entry (uvicorn src.main:app)
+│   ├── domain/                     # Entities & exceptions (pure Python)
+│   ├── application/
+│   │   ├── ports/                  # Hexagonal interfaces
+│   │   ├── routing/                # Pure rules + output contracts
+│   │   ├── graph.py                # LangGraph state machine
+│   │   ├── orchestrator.py         # ChatOrchestrator facade
+│   │   └── usecases/chat.py        # Chat use case
+│   ├── adapters/
+│   │   ├── llm/chains/             # LangChain LCEL (classifier, SQL, RAG)
+│   │   ├── persistence/            # SQL executor + pipeline adapter
+│   │   ├── vector/                 # FAISS / Qdrant / Pinecone
+│   │   ├── api/routes/             # FastAPI endpoints
+│   │   └── repositories/           # Conversation storage
+│   └── infrastructure/             # Config, DI, seed, indexing, migrations
+├── frontend/                       # Streamlit UI
+├── alembic/                        # Schema migrations
+├── tests/                          # Unit + integration tests
+├── Makefile                        # local · docker · quality targets
+├── docker-compose.yml              # Postgres, app, streamlit (+ qdrant profile)
+└── .env.example
+```
 
 ---
 
@@ -417,13 +388,28 @@ make format            # Auto-format
 
 | Issue | Fix |
 |-------|-----|
-| `Address already in use` on port 8000 | `make stop-backend` then `make run` |
-| `Port 8501 is not available` | `make stop-streamlit` then `make streamlit` |
-| Backend unreachable from Streamlit | Ensure `make run` or `make up` is running; check `BACKEND_URL` |
-| Stub routing / no LLM responses | Set `OPENAI_API_KEY` in `.env` (or use stub mode with rule-based routing) |
-| Postgres connection errors | `make postgres-up` or `make up`; run `make migrate` |
-| `make migrate`: service app is not running | Normal when using `make run` locally — `make migrate` auto-uses `migrate-local` if Postgres is up; or run `make migrate-local` |
-| Local setup diagnostics | `make doctor` |
+| Local bootstrap fails | `make doctor` — checks venv, SQLite path, vector backend |
+| `Address already in use` (:8000) | `make stop-backend` then `make run` |
+| Port 8501 unavailable | `make stop-streamlit` then `make streamlit` |
+| Stub routing / no LLM | Set `OPENAI_API_KEY` in `.env` |
+| Docker won't start | Ensure Docker Desktop is running; `make down && make docker` |
+| Postgres errors (Docker) | `make down && make docker` re-runs migrate + seed |
+| Vector index empty on `/ready` | Re-run bootstrap: `make local-init` or `make index` |
+| Qdrant / Pinecone errors | Use `make up-qdrant` or `make up-pinecone` with correct `.env` keys |
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| API | FastAPI, Pydantic v2, Uvicorn |
+| Orchestration | LangGraph |
+| LLM / RAG | LangChain LCEL (adapters only) |
+| Structured data | SQLite (local) / PostgreSQL 16 (Docker), SQLAlchemy async, Alembic |
+| Vector search | FAISS / Qdrant / Pinecone |
+| Config | pydantic-settings |
+| UI | Streamlit |
 
 ---
 
