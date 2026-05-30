@@ -5,9 +5,10 @@ from pathlib import Path
 import structlog
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
+from langchain_core.embeddings import Embeddings
 
-from src.application.ports.vector_store import RetrievedDocument, VectorStorePort
+from src.application.ports.vector_store import VectorStorePort
+from src.domain.entities.document import RetrievedDocument
 from src.domain.exceptions.base import VectorStoreError
 from src.infrastructure.config import Settings
 
@@ -17,7 +18,7 @@ logger = structlog.get_logger(__name__)
 class FaissVectorAdapter(VectorStorePort):
     """LangChain FAISS vectorstore with local persistence."""
 
-    def __init__(self, settings: Settings, embeddings: OpenAIEmbeddings) -> None:
+    def __init__(self, settings: Settings, embeddings: Embeddings) -> None:
         self._settings = settings
         self._embeddings = embeddings
         self._index_path = Path(settings.faiss_index_path)

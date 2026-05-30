@@ -5,6 +5,9 @@ from uuid import uuid4
 import structlog
 
 from src.application.graph import build_chat_graph
+from src.application.ports.classifier import ClassifierPort
+from src.application.ports.sql_pipeline import SQLPipelinePort
+from src.application.ports.vector_pipeline import VectorPipelinePort
 from src.domain.entities.chat import ChatMessage, ChatResponse, RouteType
 from src.domain.exceptions.base import ClassificationError
 
@@ -46,9 +49,9 @@ class ChatOrchestrator:
 
 
 def create_orchestrator(
-    classifier,
-    sql_pipeline,
-    vector_pipeline,
+    classifier: ClassifierPort,
+    sql_pipeline: SQLPipelinePort,
+    vector_pipeline: VectorPipelinePort,
 ) -> ChatOrchestrator:
     """Factory — wire dependencies into the LangGraph orchestrator."""
     graph = build_chat_graph(

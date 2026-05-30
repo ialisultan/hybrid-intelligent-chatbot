@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnableLambda
+
 from src.application.chains.vector_rag_chain import build_vector_rag_chain
-from src.application.services.vector_pipeline import VectorPipeline
 
 
 @pytest.mark.asyncio
@@ -23,8 +23,7 @@ async def test_vector_rag_chain_returns_answer_and_sources():
     llm = RunnableLambda(lambda _: "We offer a 30-day return policy.")
 
     chain = build_vector_rag_chain(retriever, llm)
-    pipeline = VectorPipeline(chain)
+    result = await chain.ainvoke({"query": "What is your return policy?"})
 
-    result = await pipeline.run("What is your return policy?")
     assert "30-day" in result["answer"] or "return" in result["answer"].lower()
     assert "return_policy.md" in result["sources"]

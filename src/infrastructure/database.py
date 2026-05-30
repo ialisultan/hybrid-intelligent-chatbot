@@ -46,6 +46,25 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+def get_engine() -> AsyncEngine:
+    if _engine is None:
+        raise RuntimeError("Database engine not initialised — call create_engine first")
+    return _engine
+
+
+async def check_postgres_connection() -> bool:
+    """Return True if Postgres accepts a simple SELECT 1."""
+    from sqlalchemy import text
+
+    try:
+        factory = get_session_factory()
+        async with factory() as session:
+            await session.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency — yield an async DB session."""
     factory = get_session_factory()

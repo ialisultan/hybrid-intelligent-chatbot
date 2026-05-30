@@ -4,15 +4,25 @@ from dataclasses import dataclass, field
 
 import structlog
 
-from src.adapters.llm.chain_factory import build_classifier_runnable, build_rag_chain
-from src.adapters.llm.classifier_adapter import LangChainClassifierAdapter
-from src.adapters.llm.langchain_llm import LangChainLLMAdapter
+from src.adapters.llm.provider_factory import create_providers
+from src.adapters.llm.query_classifier import LLMQueryClassifier
+from src.adapters.llm.stub import StubClassifier, StubSQLPipeline, StubVectorPipeline
+from src.adapters.persistence.postgres_adapter import PostgresAdapter
+from src.adapters.persistence.sql_pipeline_adapter import LangChainSQLPipelineAdapter
+from src.adapters.repositories.conversation_repository import InMemoryConversationRepository
 from src.adapters.vector.factory import create_vector_store
-from src.application.chains.sql_chain import build_sql_chain
+from src.adapters.vector.vector_pipeline_adapter import LangChainVectorPipelineAdapter
 from src.application.orchestrator import create_orchestrator
-from src.application.services.sql_pipeline import SQLPipeline
-from src.application.services.vector_pipeline import VectorPipeline
+from src.application.ports.chat_model import ChatModelPort
+from src.application.ports.classifier import ClassifierPort
+from src.application.ports.embedding import EmbeddingPort
+from src.application.ports.repository import ConversationRepositoryPort
+from src.application.ports.sql_executor import SQLExecutorPort
+from src.application.ports.sql_pipeline import SQLPipelinePort
+from src.application.ports.vector_pipeline import VectorPipelinePort
+from src.application.ports.vector_store import VectorStorePort
 from src.application.usecases.chat import ChatUseCase
+from src.domain.entities.llm import LLMProvider
 from src.infrastructure.config import Settings, get_settings
 from src.infrastructure.database import create_engine
 
@@ -24,6 +34,14 @@ class Container:
     """Application-wide dependency container."""
 
     settings: Settings = field(default_factory=get_settings)
+    chat_model: ChatModelPort | None = None
+    embeddings: EmbeddingPort | None = None
+    sql_executor: SQLExecutorPort | None = None
+    vector_store: VectorStorePort | None = None
+    classifier: ClassifierPort | None = None
+    sql_pipeline: SQLPipelinePort | None = None
+    vector_pipeline: VectorPipelinePort | None = None
+    conversation_repo: ConversationRepositoryPort | None = None
     chat_use_case: ChatUseCase | None = None
     _initialised: bool = False
 
@@ -39,31 +57,49 @@ class Container:
         )
 
         create_engine(self.settings)
+        self.sql_executor = PostgresAdapter(self.settings)
+        self.conversation_repo = InMemoryConversationRepository()
 
-        if self.settings.openai_api_key:
-            llm = LangChainLLMAdapter(self.settings)
-            vector_store = create_vector_store(self.settings, llm.embeddings)
-            rag_chain = build_rag_chain(vector_store, llm, self.settings)
-            classifier_chain = build_classifier_runnable(llm)
-            sql_chain = build_sql_chain(llm.chat_model)
+        chat_model, embeddings = create_providers(self.settings)
+        self.chat_model = chat_model
+        self.embeddings = embeddings
 
-            classifier = LangChainClassifierAdapter(classifier_chain, self.settings)
-            vector_pipeline = VectorPipeline(rag_chain)
-            sql_pipeline = SQLPipeline(sql_chain)
-        else:
-            logger.warning("container.init.no_openai_key", msg="Using stub pipelines")
-            from src.adapters.llm.stub import StubClassifier, StubSQLPipeline, StubVectorPipeline
+        logger.info(
+            "container.init.providers",
+            chat_provider=chat_model.provider.value,
+            embedding_provider=embeddings.provider.value,
+        )
 
+        if chat_model.provider == LLMProvider.STUB:
+            logger.warning("container.init.stub_mode", msg="Using stub pipelines")
             classifier = StubClassifier()
-            sql_pipeline = StubSQLPipeline()
-            vector_pipeline = StubVectorPipeline()
+            sql_pipeline: SQLPipelinePort = StubSQLPipeline()
+            vector_pipeline: VectorPipelinePort = StubVectorPipeline()
+        else:
+            self.vector_store = create_vector_store(
+                self.settings, embeddings.langchain_embeddings
+            )
+            classifier = LLMQueryClassifier(chat_model, self.settings)
+            vector_pipeline = LangChainVectorPipelineAdapter(
+                self.vector_store, chat_model, self.settings
+            )
+            sql_pipeline = LangChainSQLPipelineAdapter(
+                chat_model, self.sql_executor, self.settings
+            )
+
+        self.classifier = classifier
+        self.sql_pipeline = sql_pipeline
+        self.vector_pipeline = vector_pipeline
 
         orchestrator = create_orchestrator(
             classifier=classifier,
             sql_pipeline=sql_pipeline,
             vector_pipeline=vector_pipeline,
         )
-        self.chat_use_case = ChatUseCase(orchestrator=orchestrator)
+        self.chat_use_case = ChatUseCase(
+            orchestrator=orchestrator,
+            conversation_repo=self.conversation_repo,
+        )
 
         self._initialised = True
         logger.info("container.init.complete")

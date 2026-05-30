@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from src.infrastructure.config import get_settings
 from src.infrastructure.database import Base
 
-# Import ORM models here as they are created so Alembic detects them.
-# from src.adapters.persistence.models import Customer, Order, Product  # noqa: ERA001
+# Import ORM models so Alembic autogenerate detects them.
+from src.adapters.persistence.models import Customer, Order, Product  # noqa: F401
 
 config = context.config
 settings = get_settings()

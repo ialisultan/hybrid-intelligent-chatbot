@@ -4,11 +4,12 @@ import asyncio
 
 import structlog
 
-from src.adapters.llm.langchain_llm import LangChainLLMAdapter
+from src.adapters.llm.provider_factory import create_embeddings
 from src.adapters.vector.document_loader import load_and_chunk_documents
-from src.adapters.vector.factory import create_vector_store
 from src.adapters.vector.faiss_adapter import FaissVectorAdapter
+from src.adapters.vector.factory import create_vector_store
 from src.adapters.vector.qdrant_adapter import QdrantVectorAdapter
+from src.domain.entities.llm import LLMProvider
 from src.infrastructure.config import get_settings
 from src.infrastructure.logging import configure_logging
 
@@ -19,11 +20,13 @@ async def index_documents(data_dir: str = "data") -> None:
     settings = get_settings()
     configure_logging(log_level=settings.log_level, json_output=settings.log_json)
 
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY is required to embed documents")
+    embeddings = create_embeddings(settings)
+    if embeddings.provider == LLMProvider.STUB:
+        raise RuntimeError(
+            "Embedding provider unavailable. Set OPENAI_API_KEY or GOOGLE_API_KEY."
+        )
 
-    llm = LangChainLLMAdapter(settings)
-    vector_store = create_vector_store(settings, llm.embeddings)
+    vector_store = create_vector_store(settings, embeddings.langchain_embeddings)
     documents = load_and_chunk_documents(data_dir)
 
     if not documents:
@@ -40,6 +43,7 @@ async def index_documents(data_dir: str = "data") -> None:
     logger.info(
         "index.complete",
         backend=settings.vector_store_backend,
+        embedding_provider=embeddings.provider.value,
         chunks=len(documents),
     )
 

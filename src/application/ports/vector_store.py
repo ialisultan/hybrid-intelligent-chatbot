@@ -1,16 +1,8 @@
 """Vector store port — semantic document retrieval."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 
-
-@dataclass(frozen=True, slots=True)
-class RetrievedDocument:
-    """A document chunk retrieved from the vector store."""
-
-    content: str
-    source: str
-    score: float
+from src.domain.entities.document import RetrievedDocument
 
 
 class VectorStorePort(ABC):

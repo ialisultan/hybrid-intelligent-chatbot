@@ -1,5 +1,7 @@
 """Stub LLM adapters — replaced with real OpenAI/LangChain implementations."""
 
+from src.application.ports.sql_pipeline import SQLPipelinePort
+from src.application.ports.vector_pipeline import VectorPipelinePort
 from src.domain.entities.chat import QueryRoute, RouteType
 
 
@@ -14,7 +16,7 @@ class StubClassifier:
         return QueryRoute(route=RouteType.VECTOR, confidence=0.85, reasoning="default vector")
 
 
-class StubSQLPipeline:
+class StubSQLPipeline(SQLPipelinePort):
     async def run(self, query: str) -> dict:
         return {
             "answer": f"[SQL stub] Processed: {query}",
@@ -22,7 +24,7 @@ class StubSQLPipeline:
         }
 
 
-class StubVectorPipeline:
+class StubVectorPipeline(VectorPipelinePort):
     async def run(self, query: str) -> dict:
         return {
             "answer": f"[Vector stub] Processed: {query}",

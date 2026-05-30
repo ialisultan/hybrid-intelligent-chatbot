@@ -1,17 +1,8 @@
-"""LLM port — text generation abstraction."""
+"""Legacy LLM port — composes ChatModelPort + EmbeddingPort."""
 
-from abc import ABC, abstractmethod
+from src.application.ports.chat_model import ChatModelPort
+from src.application.ports.embedding import EmbeddingPort
 
 
-class LLMPort(ABC):
-    """Generate text completions via an underlying LLM provider."""
-
-    @abstractmethod
-    async def generate(self, system_prompt: str, user_prompt: str) -> str:
-        """Return the LLM completion text."""
-        ...
-
-    @abstractmethod
-    async def embed(self, text: str) -> list[float]:
-        """Return embedding vector for the given text."""
-        ...
+class LLMPort(ChatModelPort, EmbeddingPort):
+    """Combined chat + embedding port for backward compatibility."""

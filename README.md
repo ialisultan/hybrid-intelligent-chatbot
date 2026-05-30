@@ -22,8 +22,35 @@ LangGraph: Classifier Node (LangChain structured output + rule fallback)
 |-------|----------------|
 | `domain/` | Pure entities & exceptions — no LangChain/LangGraph |
 | `application/` | LangGraph graph, LCEL chain definitions, pipeline services |
-| `adapters/` | FAISS/Qdrant vectorstores, OpenAI LLM, chain factory |
-| `infrastructure/` | DI wiring, config, indexing |
+| `adapters/` | FAISS/Qdrant vectorstores, multi-provider LLM, persistence, repositories |
+| `infrastructure/` | DI wiring, config, indexing, database |
+
+## Multi-Provider LLM
+
+Chat and embedding providers are selected independently based on API key availability:
+
+| Provider | Chat | Embeddings | Env key |
+|----------|------|------------|---------|
+| OpenAI | yes | yes | `OPENAI_API_KEY` |
+| Anthropic | yes | no | `ANTHROPIC_API_KEY` |
+| Google / Gemini | yes | yes | `GOOGLE_API_KEY` |
+
+```env
+LLM_PROVIDER=auto                    # auto | openai | anthropic | google
+EMBEDDING_PROVIDER=auto              # auto | openai | google
+LLM_PROVIDER_PRIORITY=openai,anthropic,google
+```
+
+**Auto mode:** first provider in priority list with a key is used for chat. Embeddings auto-select OpenAI, else Google. If no keys are set, stub pipelines are used.
+
+**Example:** Anthropic chat + OpenAI embeddings:
+
+```env
+LLM_PROVIDER=anthropic
+EMBEDDING_PROVIDER=openai
+ANTHROPIC_API_KEY=...
+OPENAI_API_KEY=...
+```
 
 ## Vector Store Backends
 

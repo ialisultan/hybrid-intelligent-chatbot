@@ -5,6 +5,9 @@ from typing import Literal, TypedDict
 import structlog
 from langgraph.graph import END, START, StateGraph
 
+from src.application.ports.classifier import ClassifierPort
+from src.application.ports.sql_pipeline import SQLPipelinePort
+from src.application.ports.vector_pipeline import VectorPipelinePort
 from src.domain.entities.chat import RouteType
 from src.domain.exceptions.base import RoutingViolationError
 
@@ -22,7 +25,11 @@ class ChatState(TypedDict, total=False):
     sql_query: str | None
 
 
-def build_chat_graph(classifier, sql_pipeline, vector_pipeline):
+def build_chat_graph(
+    classifier: ClassifierPort,
+    sql_pipeline: SQLPipelinePort,
+    vector_pipeline: VectorPipelinePort,
+):
     """Build the LangGraph with strict routing — each path is mutually exclusive."""
 
     async def classify_node(state: ChatState) -> ChatState:

@@ -23,6 +23,14 @@ class QueryRoute:
 
 
 @dataclass(frozen=True, slots=True)
+class Query:
+    """Inbound user question."""
+
+    text: str
+    conversation_id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ChatMessage:
     """A single message in a conversation."""
 

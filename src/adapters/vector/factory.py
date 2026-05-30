@@ -1,6 +1,6 @@
 """Vector store factory — selects FAISS or Qdrant backend."""
 
-from langchain_openai import OpenAIEmbeddings
+from langchain_core.embeddings import Embeddings
 
 from src.adapters.vector.faiss_adapter import FaissVectorAdapter
 from src.adapters.vector.qdrant_adapter import QdrantVectorAdapter
@@ -10,7 +10,7 @@ from src.infrastructure.config import Settings
 
 def create_vector_store(
     settings: Settings,
-    embeddings: OpenAIEmbeddings,
+    embeddings: Embeddings,
 ) -> VectorStorePort:
     """Return the configured vector store adapter."""
     backend = settings.vector_store_backend.lower()
