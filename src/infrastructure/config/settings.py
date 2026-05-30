@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     )
     sql_pipeline_max_rows: int = Field(default=100, alias="SQL_PIPELINE_MAX_ROWS")
     conversation_history_limit: int = Field(default=10, alias="CONVERSATION_HISTORY_LIMIT")
+    conversation_repository: str = Field(default="postgres", alias="CONVERSATION_REPOSITORY")
 
     @computed_field  # type: ignore[prop-decorator]
     @property

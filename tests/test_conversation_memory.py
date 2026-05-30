@@ -107,6 +107,45 @@ async def test_graph_loads_history_and_passes_context_to_pipeline():
 
 
 @pytest.mark.asyncio
+async def test_graph_follow_up_includes_prior_turn_in_classifier_input():
+    """Multi-turn: classifier receives contextual query built from Postgres/history."""
+    repo = InMemoryConversationRepository()
+    classifier = RecordingClassifier()
+    vector_pipeline = RecordingVectorPipeline()
+
+    graph = build_chat_graph(
+        classifier=classifier,
+        sql_pipeline=RecordingSQLPipeline(),
+        vector_pipeline=vector_pipeline,
+        conversation_repo=repo,
+        history_limit=10,
+    )
+
+    conversation_id = uuid4()
+    await repo.save_message(
+        ChatMessage(content="What is the return policy?", conversation_id=conversation_id)
+    )
+    await repo.save_message(
+        ChatMessage(
+            content="30-day returns apply.",
+            role="assistant",
+            conversation_id=conversation_id,
+        )
+    )
+
+    await graph.ainvoke(
+        {
+            "query": "What about warranty?",
+            "conversation_id": str(conversation_id),
+        }
+    )
+
+    assert "return policy" in classifier.last_query
+    assert "What about warranty?" in classifier.last_query
+    assert "warranty" in vector_pipeline.last_query.lower() or "Warranty" in vector_pipeline.last_query
+
+
+@pytest.mark.asyncio
 async def test_graph_without_repo_uses_raw_query():
     classifier = RecordingClassifier()
     vector_pipeline = RecordingVectorPipeline()

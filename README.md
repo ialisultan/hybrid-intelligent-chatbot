@@ -11,7 +11,8 @@ Production-ready FastAPI backend for **GenAI Engineer Assessment II** — a hybr
 | Query routing | LLM classifier + rule-based fallback for edge cases |
 | SQL pipeline | LangChain NL→SQL → read-only Postgres execution → NL answer |
 | Vector pipeline | FAISS (local) or Qdrant (Docker) RAG with grounded responses |
-| Multi-turn chat | Conversation history loaded into LangGraph before classification |
+| Multi-turn chat | Postgres-backed history (`conversation_messages`) loaded in LangGraph before classification |
+| Streamlit UI | Chat interface with Quick Test buttons, routing details, session management |
 | Multi-provider LLM | OpenAI, Anthropic, Google — auto-selected by API key |
 
 ---
@@ -68,6 +69,8 @@ flowchart TD
 
 **Classifier:** LLM structured output (primary) → rule-based fallback when confidence is low or LLM fails.
 
+**Stub mode** (no API keys): routing uses the same `rule_based_classify` logic as the production fallback, so assessment edge cases behave identically.
+
 **Edge-case rule:** Queries mentioning table words (`orders`, `customers`) but asking about **policy/process** → **Vector**.
 
 ---
@@ -82,6 +85,45 @@ flowchart TD
 | Structured data | PostgreSQL 16, SQLAlchemy async, Alembic |
 | Vector search | FAISS (local) / Qdrant (Docker) |
 | Config | pydantic-settings |
+| UI | Streamlit (`frontend/`) |
+
+---
+
+## Full-Stack Architecture
+
+```mermaid
+flowchart TB
+    subgraph clients [Clients]
+        UI[Streamlit :8501]
+        API_Client[curl / HTTP clients]
+    end
+    subgraph backend [FastAPI :8000]
+        ChatEP[POST /api/v1/chat]
+        UseCase[ChatUseCase]
+        Graph[LangGraph]
+    end
+    subgraph data [Data layer]
+        PG[(PostgreSQL)]
+        VS[FAISS or Qdrant]
+    end
+    UI -->|httpx server-side| ChatEP
+    API_Client --> ChatEP
+    ChatEP --> UseCase --> Graph
+    Graph -->|history| PG
+    Graph -->|sql_pipeline| PG
+    Graph -->|vector_pipeline| VS
+```
+
+Streamlit calls the API **server-side** (`BACKEND_URL`), so browser CORS is not required for the UI.
+
+### Docker services
+
+| Service | Port | Role |
+|---------|------|------|
+| `postgres` | 5432 | Structured data + `conversation_messages` history |
+| `qdrant` | 6333 | Vector index (Docker default) |
+| `app` | 8000 | FastAPI + LangGraph orchestration |
+| `streamlit` | 8501 | Assessment demo UI |
 
 ---
 
@@ -89,14 +131,14 @@ flowchart TD
 
 | Port | Adapter |
 |------|---------|
-| `ClassifierPort` | `LLMQueryClassifier` |
+| `ClassifierPort` | `LLMQueryClassifier` / `RuleBasedClassifier` (tests) |
 | `SQLPipelinePort` | `LangChainSQLPipelineAdapter` |
 | `VectorPipelinePort` | `LangChainVectorPipelineAdapter` |
 | `SQLExecutorPort` | `PostgresAdapter` |
 | `VectorStorePort` | `FaissVectorAdapter` / `QdrantVectorAdapter` |
 | `ChatModelPort` | OpenAI / Anthropic / Google providers |
 | `EmbeddingPort` | OpenAI / Google providers |
-| `ConversationRepositoryPort` | `InMemoryConversationRepository` |
+| `ConversationRepositoryPort` | `PostgresConversationRepository` (default) / `InMemoryConversationRepository` |
 
 ---
 
@@ -123,6 +165,13 @@ make streamlit                        # terminal 2 — UI on :8501
 
 Set `BACKEND_URL` in `.env` if the API is not on `http://localhost:8000`.
 
+### Streamlit UI features
+
+- **Quick Test** sidebar — all assessment SQL, Vector, and edge-case queries
+- **Routing details** — route, confidence, generated SQL, document sources per reply
+- **Settings** — backend URL, active LLM providers (read-only), conversation ID, new session
+- **Multi-turn** — reuses `conversation_id` from the API across messages in the same session
+
 ## Quick Start — Local (no app container)
 
 ```bash
@@ -145,9 +194,23 @@ Run `make doctor` if anything fails.
 | `VECTOR_STORE_BACKEND` | `faiss` | `faiss` (local) \| `qdrant` (Docker) |
 | `CLASSIFIER_CONFIDENCE_THRESHOLD` | `0.7` | Fallback to rules below this |
 | `CONVERSATION_HISTORY_LIMIT` | `10` | Max prior turns loaded into context |
+| `CONVERSATION_REPOSITORY` | `postgres` | `postgres` \| `memory` (conversation storage) |
+| `BACKEND_URL` | `http://localhost:8000` | API URL for Streamlit (`http://app:8000` in Docker) |
+| `STREAMLIT_PORT` | `8501` | Streamlit local / compose port |
 | `APP_DEBUG` | `false` | Enables `POST /api/v1/classify` debug endpoint |
 
 See [`.env.example`](.env.example) for the full list.
+
+---
+
+## Multi-Turn Conversations
+
+1. Send a message without `conversation_id` — the API returns a new UUID.
+2. Send follow-up messages with the same `conversation_id`.
+3. `ChatUseCase` persists user and assistant turns to PostgreSQL (`conversation_messages`).
+4. LangGraph `load_history` loads recent turns and builds a `contextual_query` for classification and pipelines.
+
+History survives API restarts when `CONVERSATION_REPOSITORY=postgres` (default). Set `CONVERSATION_REPOSITORY=memory` for ephemeral storage (used in unit tests).
 
 ---
 
@@ -309,7 +372,7 @@ src/
 │   │   └── vector_pipeline_adapter.py
 │   ├── llm/                   # Classifier, providers, OpenAI adapter
 │   ├── api/routes/            # FastAPI endpoints
-│   └── repositories/          # In-memory conversation store
+│   └── repositories/          # Postgres + in-memory conversation adapters
 ├── infrastructure/            # DI container, config, seed, indexing
 └── interfaces/schemas/        # Pydantic API models
 ```
@@ -341,10 +404,26 @@ make format            # Auto-format
 | `backend` | Alias for `run` |
 | `backend-up` | Start Postgres, Qdrant, and API containers only |
 | `streamlit` | Run Streamlit UI locally (needs API on `BACKEND_URL`) |
+| `stop-streamlit` | Stop local Streamlit on `STREAMLIT_PORT` (default 8501) |
+| `stop-backend` | Stop local uvicorn on `APP_PORT` (default 8000) |
 | `logs-streamlit` | Tail Streamlit container logs |
 | `doctor` | Diagnose local setup |
 | `migrate` / `seed` / `index` | Individual bootstrap steps (Docker) |
 | `test` / `lint` / `format` | Quality gates |
+
+---
+
+## Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| `Address already in use` on port 8000 | `make stop-backend` then `make run` |
+| `Port 8501 is not available` | `make stop-streamlit` then `make streamlit` |
+| Backend unreachable from Streamlit | Ensure `make run` or `make up` is running; check `BACKEND_URL` |
+| Stub routing / no LLM responses | Set `OPENAI_API_KEY` in `.env` (or use stub mode with rule-based routing) |
+| Postgres connection errors | `make postgres-up` or `make up`; run `make migrate` |
+| `make migrate`: service app is not running | Normal when using `make run` locally — `make migrate` auto-uses `migrate-local` if Postgres is up; or run `make migrate-local` |
+| Local setup diagnostics | `make doctor` |
 
 ---
 

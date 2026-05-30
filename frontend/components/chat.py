@@ -8,7 +8,11 @@ from uuid import UUID
 import httpx
 import streamlit as st
 
-from frontend.utils import post_chat
+from frontend.components.response_card import render_response_meta
+from frontend.utils import parse_chat_response, post_chat
+
+USER_AVATAR = "👤"
+ASSISTANT_AVATAR = "🤖"
 
 
 def init_session_state() -> None:
@@ -20,36 +24,24 @@ def init_session_state() -> None:
         st.session_state.pending_query = None
 
 
-def _render_metadata(meta: dict[str, Any]) -> None:
-    route = meta.get("route", "")
-    confidence = meta.get("confidence")
-    route_label = str(route).upper() if route else "UNKNOWN"
-    conf_text = f" · {confidence:.0%} confidence" if confidence is not None else ""
-    if route == "sql":
-        st.info(f"Route: **{route_label}**{conf_text}")
-    elif route == "vector":
-        st.success(f"Route: **{route_label}**{conf_text}")
-    else:
-        st.caption(f"Route: {route_label}{conf_text}")
-
-    sql_query = meta.get("sql_query")
-    if sql_query:
-        with st.expander("Generated SQL"):
-            st.code(sql_query, language="sql")
-
-    sources = meta.get("sources") or []
-    if sources:
-        with st.expander("Sources"):
-            for src in sources:
-                st.markdown(f"- `{src}`")
+def _meta_from_parsed(parsed: Any) -> dict[str, Any]:
+    return {
+        "route": parsed.route,
+        "confidence": parsed.confidence,
+        "sql_query": parsed.sql_query,
+        "sources": parsed.sources,
+    }
 
 
 def render_message_history() -> None:
     for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
+        is_user = msg["role"] == "user"
+        role = msg["role"]
+        avatar = USER_AVATAR if is_user else ASSISTANT_AVATAR
+        with st.chat_message(name=role, avatar=avatar):
             st.markdown(msg["content"])
-            if msg["role"] == "assistant" and msg.get("meta"):
-                _render_metadata(msg["meta"])
+            if not is_user and msg.get("meta"):
+                render_response_meta(msg["meta"])
 
 
 def _send_query(query: str) -> None:
@@ -62,20 +54,18 @@ def _send_query(query: str) -> None:
     conv_id: UUID | None = st.session_state.conversation_id
     try:
         with st.spinner("Routing query…"):
-            result = post_chat(query, conversation_id=conv_id)
+            raw = post_chat(query, conversation_id=conv_id)
+            parsed = parse_chat_response(raw)
 
-        answer = result.get("answer", "")
-        meta = {
-            "route": result.get("route"),
-            "confidence": result.get("confidence"),
-            "sql_query": result.get("sql_query"),
-            "sources": result.get("sources", []),
-        }
         st.session_state.messages.append(
-            {"role": "assistant", "content": answer, "meta": meta}
+            {
+                "role": "assistant",
+                "content": parsed.answer,
+                "meta": _meta_from_parsed(parsed),
+            }
         )
-        if result.get("conversation_id"):
-            st.session_state.conversation_id = UUID(str(result["conversation_id"]))
+        if parsed.conversation_id:
+            st.session_state.conversation_id = parsed.conversation_id
     except httpx.ConnectError:
         st.session_state.messages.pop()
         st.error(
@@ -97,15 +87,7 @@ def render_chat_input() -> None:
         _send_query(pending)
         st.rerun()
 
-    with st.form("chat_form", clear_on_submit=True):
-        user_input = st.text_area(
-            "Your question",
-            placeholder="Ask about revenue, policies, products…",
-            height=100,
-            label_visibility="collapsed",
-        )
-        submitted = st.form_submit_button("Send", type="primary", use_container_width=True)
-
-    if submitted and user_input:
+    user_input = st.chat_input("Ask about revenue, policies, products…")
+    if user_input:
         _send_query(user_input)
         st.rerun()

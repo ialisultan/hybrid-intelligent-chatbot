@@ -12,7 +12,12 @@ from src.infrastructure.config import get_settings
 from src.infrastructure.database import Base
 
 # Import ORM models so Alembic autogenerate detects them.
-from src.adapters.persistence.models import Customer, Order, Product  # noqa: F401
+from src.adapters.persistence.models import (  # noqa: F401
+    ConversationMessageRow,
+    Customer,
+    Order,
+    Product,
+)
 
 config = context.config
 settings = get_settings()

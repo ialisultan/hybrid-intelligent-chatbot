@@ -13,7 +13,7 @@ from src.adapters.llm.query_classifier import LLMQueryClassifier
 from src.adapters.llm.stub import StubClassifier, StubSQLPipeline, StubVectorPipeline
 from src.adapters.persistence.postgres_adapter import PostgresAdapter
 from src.adapters.persistence.sql_pipeline_adapter import LangChainSQLPipelineAdapter
-from src.adapters.repositories.conversation_repository import InMemoryConversationRepository
+from src.adapters.repositories.factory import create_conversation_repository
 from src.adapters.vector.factory import create_vector_store
 from src.adapters.vector.vector_pipeline_adapter import LangChainVectorPipelineAdapter
 from src.application.orchestrator import ChatOrchestrator, create_orchestrator
@@ -63,7 +63,11 @@ class Container:
 
         create_engine(self.settings)
         self.sql_executor = PostgresAdapter(self.settings)
-        self.conversation_repo = InMemoryConversationRepository()
+        self.conversation_repo = create_conversation_repository(self.settings)
+        logger.info(
+            "container.init.conversation_repo",
+            backend=self.settings.conversation_repository,
+        )
 
         chat_model, embeddings = create_providers(self.settings)
         self.chat_model = chat_model

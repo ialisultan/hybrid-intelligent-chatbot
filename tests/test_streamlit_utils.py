@@ -8,7 +8,13 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
-from frontend.utils import get_backend_url, get_health, post_chat
+from frontend.utils import (
+    ChatResponseMeta,
+    get_backend_url,
+    get_health,
+    parse_chat_response,
+    post_chat,
+)
 
 
 def test_get_backend_url_default(monkeypatch):
@@ -88,3 +94,43 @@ def test_get_health():
 
     mock_client.get.assert_called_once_with("http://test:8000/health")
     assert health["status"] == "ok"
+
+
+def test_parse_chat_response_full():
+    conv_id = UUID("3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    parsed = parse_chat_response(
+        {
+            "answer": "Total is $100.",
+            "route": "sql",
+            "confidence": 0.92,
+            "sources": [],
+            "sql_query": "SELECT SUM(amount) FROM orders",
+            "conversation_id": str(conv_id),
+        }
+    )
+    assert isinstance(parsed, ChatResponseMeta)
+    assert parsed.answer == "Total is $100."
+    assert parsed.route == "sql"
+    assert parsed.confidence == 0.92
+    assert parsed.sql_query == "SELECT SUM(amount) FROM orders"
+    assert parsed.sources == []
+    assert parsed.conversation_id == conv_id
+
+
+def test_parse_chat_response_vector_route_enum_like():
+    class RouteEnum:
+        value = "vector"
+
+    parsed = parse_chat_response(
+        {
+            "answer": "30-day returns.",
+            "route": RouteEnum(),
+            "confidence": 0.88,
+            "sources": ["return_policy.md"],
+            "sql_query": None,
+            "conversation_id": None,
+        }
+    )
+    assert parsed.route == "vector"
+    assert parsed.sources == ["return_policy.md"]
+    assert parsed.conversation_id is None

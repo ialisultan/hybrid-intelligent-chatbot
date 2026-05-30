@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -12,6 +13,41 @@ DEFAULT_BACKEND_URL = "http://localhost:8000"
 CHAT_PATH = "/api/v1/chat"
 HEALTH_PATH = "/health"
 REQUEST_TIMEOUT = 120.0
+
+
+@dataclass(frozen=True)
+class ChatResponseMeta:
+    """Parsed fields from POST /api/v1/chat."""
+
+    answer: str
+    route: str
+    confidence: float | None
+    sql_query: str | None
+    sources: list[str]
+    conversation_id: UUID | None
+
+
+def parse_chat_response(data: dict[str, Any]) -> ChatResponseMeta:
+    """Normalize API JSON into a typed response object."""
+    conv_raw = data.get("conversation_id")
+    conversation_id = UUID(str(conv_raw)) if conv_raw else None
+    route = data.get("route", "")
+    route_str = route.value if hasattr(route, "value") else str(route)
+
+    confidence = data.get("confidence")
+    conf_float = float(confidence) if confidence is not None else None
+
+    sources_raw = data.get("sources") or []
+    sources = [str(s) for s in sources_raw]
+
+    return ChatResponseMeta(
+        answer=str(data.get("answer", "")),
+        route=route_str,
+        confidence=conf_float,
+        sql_query=data.get("sql_query"),
+        sources=sources,
+        conversation_id=conversation_id,
+    )
 
 
 def get_backend_url() -> str:

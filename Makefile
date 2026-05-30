@@ -1,4 +1,4 @@
-.PHONY: help setup doctor postgres-up postgres-down local-init build up down wait-healthy restart logs logs-streamlit migrate seed test test-unit test-integration lint format run backend backend-up streamlit shell clean clean-venv
+.PHONY: help setup doctor postgres-up postgres-down local-init build up down wait-healthy restart logs logs-streamlit migrate seed test test-unit test-integration lint format run backend backend-up stop-backend streamlit stop-streamlit shell clean clean-venv
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 COMPOSE          := docker compose
@@ -20,7 +20,8 @@ else
 endif
 
 export PYTHONPATH := $(CURDIR)
-BACKEND_URL       ?= http://localhost:8000
+APP_PORT          ?= 8000
+BACKEND_URL       ?= http://localhost:$(APP_PORT)
 STREAMLIT_PORT    ?= 8501
 
 help: ## Show this help
@@ -75,11 +76,12 @@ up: ## Start all services and bootstrap DB + vector index
 	@echo "Stack ready:"
 	@echo "  API docs:  http://localhost:$${APP_PORT:-8000}/docs"
 	@echo "  Streamlit: http://localhost:$(STREAMLIT_PORT)"
+	@echo "  (Streamlit calls API at http://app:8000 inside Docker)"
 
 wait-healthy: ## Wait for Postgres and app health checks
 	@chmod +x scripts/wait_healthy.sh
 	@COMPOSE="$(COMPOSE)" APP_SERVICE="$(APP_SERVICE)" POSTGRES_SERVICE="$(POSTGRES_SERVICE)" \
-		APP_PORT="$${APP_PORT:-8000}" scripts/wait_healthy.sh
+		APP_PORT="$${APP_PORT:-8000}" STREAMLIT_PORT="$(STREAMLIT_PORT)" scripts/wait_healthy.sh
 
 down: ## Stop and remove containers
 	$(COMPOSE) down
@@ -93,8 +95,21 @@ logs-streamlit: ## Tail Streamlit UI logs
 	$(COMPOSE) logs -f streamlit
 
 # ── Database ───────────────────────────────────────────────────────────────────
-migrate: ## Run Alembic migrations
-	$(COMPOSE) exec $(APP_SERVICE) alembic upgrade head
+migrate: ## Run Alembic migrations (Docker app, one-off container, or local fallback)
+	@if $(COMPOSE) ps --status running -q $(APP_SERVICE) 2>/dev/null | grep -q .; then \
+		$(COMPOSE) exec $(APP_SERVICE) alembic upgrade head; \
+	elif $(COMPOSE) ps --status running -q $(POSTGRES_SERVICE) 2>/dev/null | grep -q .; then \
+		if [ -d $(VENV_DIR) ]; then \
+			echo "App container not running — using local alembic (make postgres-up + make run workflow)."; \
+			$(MAKE) migrate-local; \
+		else \
+			echo "App container not running — using one-off migrate container..."; \
+			$(COMPOSE) run --rm $(APP_SERVICE) alembic upgrade head; \
+		fi; \
+	else \
+		echo "Postgres is not running. Start it with: make postgres-up  (or: make up)"; \
+		exit 1; \
+	fi
 
 migrate-local: ## Run migrations locally (requires: make postgres-up)
 	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)
@@ -117,20 +132,46 @@ index-local: ## Index documents into FAISS (local)
 	$(PYTHON) -m src.infrastructure.index_documents
 
 # ── Development ────────────────────────────────────────────────────────────────
+stop-backend: ## Stop local uvicorn processes bound to APP_PORT
+	@pids=$$(lsof -tiTCP:$(APP_PORT) -sTCP:LISTEN 2>/dev/null); \
+	if [ -n "$$pids" ]; then \
+		echo "Stopping process(es) on port $(APP_PORT): $$pids"; \
+		kill $$pids 2>/dev/null || true; \
+		sleep 1; \
+		pids2=$$(lsof -tiTCP:$(APP_PORT) -sTCP:LISTEN 2>/dev/null); \
+		[ -z "$$pids2" ] || kill -9 $$pids2 2>/dev/null || true; \
+	else \
+		echo "No listener on port $(APP_PORT)."; \
+	fi
+
 run: ## Run FastAPI locally with hot reload (requires: make setup)
 	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)
-	$(UVICORN) main:app --host 0.0.0.0 --port 8000 --reload
+	@$(PYTHON) scripts/port_guard.py $(APP_PORT) backend
+	$(UVICORN) main:app --host 0.0.0.0 --port $(APP_PORT) --reload
 
 backend: run ## Alias: run FastAPI backend locally
 
 backend-up: ## Start Postgres, Qdrant, and API containers only (no Streamlit)
 	$(COMPOSE) up -d $(POSTGRES_SERVICE) qdrant $(APP_SERVICE)
 
+stop-streamlit: ## Stop local Streamlit processes bound to STREAMLIT_PORT
+	@pids=$$(lsof -tiTCP:$(STREAMLIT_PORT) -sTCP:LISTEN 2>/dev/null); \
+	if [ -n "$$pids" ]; then \
+		echo "Stopping process(es) on port $(STREAMLIT_PORT): $$pids"; \
+		kill $$pids 2>/dev/null || true; \
+		sleep 1; \
+		pids2=$$(lsof -tiTCP:$(STREAMLIT_PORT) -sTCP:LISTEN 2>/dev/null); \
+		[ -z "$$pids2" ] || kill -9 $$pids2 2>/dev/null || true; \
+	else \
+		echo "No listener on port $(STREAMLIT_PORT)."; \
+	fi
+
 streamlit: ## Run Streamlit UI locally (requires: make setup + make run)
 	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)
+	@$(PYTHON) scripts/port_guard.py $(STREAMLIT_PORT) streamlit
 	BACKEND_URL=$(BACKEND_URL) $(STREAMLIT) run frontend/app.py \
 		--server.port $(STREAMLIT_PORT) \
-		--server.address 0.0.0.0
+		--server.address=0.0.0.0
 
 install: ## Install production dependencies into .venv
 	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)

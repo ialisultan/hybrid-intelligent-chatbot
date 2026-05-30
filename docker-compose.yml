@@ -62,6 +62,8 @@ services:
       dockerfile: frontend/Dockerfile
     container_name: hybrid-chatbot-streamlit
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       BACKEND_URL: http://app:8000
     ports:

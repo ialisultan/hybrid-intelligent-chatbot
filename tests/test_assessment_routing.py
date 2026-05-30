@@ -26,14 +26,8 @@ def test_rule_based_assessment_routing(query, expected):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "query,expected",
-    [
-        ("Total revenue this month?", RouteType.SQL),
-        ("What is your return policy?", RouteType.VECTOR),
-    ],
-)
-async def test_stub_classifier_keyword_routing(query, expected):
+@pytest.mark.parametrize("query,expected", ASSESSMENT_CASES)
+async def test_stub_classifier_assessment_routing(query, expected):
     classifier = StubClassifier()
     result = await classifier.classify(query)
     assert result.route == expected

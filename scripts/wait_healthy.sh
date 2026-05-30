@@ -7,6 +7,7 @@ APP_SERVICE="${APP_SERVICE:-app}"
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres}"
 POSTGRES_USER="${POSTGRES_USER:-chatbot}"
 APP_PORT="${APP_PORT:-8000}"
+STREAMLIT_PORT="${STREAMLIT_PORT:-8501}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-60}"
 
 echo "Waiting for Postgres..."
@@ -26,7 +27,7 @@ echo "Waiting for app /health..."
 for i in $(seq 1 "$MAX_ATTEMPTS"); do
   if curl -sf "http://localhost:${APP_PORT}/health" >/dev/null 2>&1; then
     echo "App is healthy."
-    exit 0
+    break
   fi
   if [ "$i" -eq "$MAX_ATTEMPTS" ]; then
     echo "App did not become healthy in time." >&2
@@ -34,3 +35,14 @@ for i in $(seq 1 "$MAX_ATTEMPTS"); do
   fi
   sleep 1
 done
+
+echo "Waiting for Streamlit (optional)..."
+for i in $(seq 1 30); do
+  if curl -sf "http://localhost:${STREAMLIT_PORT}/_stcore/health" >/dev/null 2>&1; then
+    echo "Streamlit is healthy."
+    exit 0
+  fi
+  sleep 1
+done
+echo "Streamlit not ready yet (may still be starting) — open http://localhost:${STREAMLIT_PORT} shortly."
+exit 0

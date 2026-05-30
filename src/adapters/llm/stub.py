@@ -1,19 +1,16 @@
-"""Stub LLM adapters — replaced with real OpenAI/LangChain implementations."""
+"""Stub LLM adapters — used when no API keys are configured."""
 
+from src.application.chains.classifier_chain import rule_based_classify
 from src.application.ports.sql_pipeline import SQLPipelinePort
 from src.application.ports.vector_pipeline import VectorPipelinePort
-from src.domain.entities.chat import QueryRoute, RouteType
+from src.domain.entities.chat import QueryRoute
 
 
 class StubClassifier:
-    """Placeholder classifier for bootstrapping."""
+    """Classifier for stub mode — same rule-based logic as production fallback."""
 
     async def classify(self, query: str) -> QueryRoute:
-        sql_keywords = {"total", "revenue", "orders", "customers", "top", "count", "sum", "list"}
-        tokens = set(query.lower().split())
-        if tokens & sql_keywords:
-            return QueryRoute(route=RouteType.SQL, confidence=0.85, reasoning="keyword match")
-        return QueryRoute(route=RouteType.VECTOR, confidence=0.85, reasoning="default vector")
+        return rule_based_classify(query)
 
 
 class StubSQLPipeline(SQLPipelinePort):

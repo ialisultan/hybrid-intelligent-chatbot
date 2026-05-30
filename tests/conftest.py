@@ -25,6 +25,7 @@ async def stub_container(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     monkeypatch.setenv("GOOGLE_API_KEY", "")
+    monkeypatch.setenv("CONVERSATION_REPOSITORY", "memory")
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
     di_module.get_settings.cache_clear()
