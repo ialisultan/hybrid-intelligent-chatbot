@@ -2,6 +2,8 @@
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.adapters.persistence.postgres_adapter import PostgresAdapter
 from src.adapters.persistence.postgres_repository import PostgresRepository
 from src.domain.exceptions.base import DatabaseError

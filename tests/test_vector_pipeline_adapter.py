@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.adapters.vector.vector_pipeline_adapter import LangChainVectorPipelineAdapter
 from src.domain.exceptions.base import VectorStoreError
 from src.infrastructure.config.settings import Settings

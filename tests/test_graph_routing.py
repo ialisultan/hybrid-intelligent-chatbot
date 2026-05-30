@@ -1,8 +1,11 @@
 """LangGraph routing tests — strict SQL vs Vector separation."""
 
 import pytest
+
 from src.application.graph import build_chat_graph
 from src.domain.entities.chat import QueryRoute, RouteType
+
+pytestmark = pytest.mark.unit
 
 
 class FixedClassifier:

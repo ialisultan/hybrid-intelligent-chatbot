@@ -1,4 +1,4 @@
-.PHONY: help setup doctor postgres-up postgres-down local-init build up down restart logs migrate seed test lint format run shell clean clean-venv
+.PHONY: help setup doctor postgres-up postgres-down local-init build up down wait-healthy restart logs migrate seed test test-unit test-integration lint format run shell clean clean-venv
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 COMPOSE          := docker compose
@@ -60,8 +60,17 @@ local-init: ## Migrate + seed + index for local dev (FAISS)
 build: ## Build Docker images
 	$(COMPOSE) build
 
-up: ## Start all services (detached)
+up: ## Start all services and bootstrap DB + vector index
 	$(COMPOSE) up -d
+	@$(MAKE) wait-healthy
+	@$(MAKE) migrate seed index
+	@echo ""
+	@echo "Stack ready: http://localhost:$${APP_PORT:-8000}/docs"
+
+wait-healthy: ## Wait for Postgres and app health checks
+	@chmod +x scripts/wait_healthy.sh
+	@COMPOSE="$(COMPOSE)" APP_SERVICE="$(APP_SERVICE)" POSTGRES_SERVICE="$(POSTGRES_SERVICE)" \
+		APP_PORT="$${APP_PORT:-8000}" scripts/wait_healthy.sh
 
 down: ## Stop and remove containers
 	$(COMPOSE) down
@@ -115,6 +124,14 @@ shell: ## Open a shell inside the app container
 test: ## Run test suite with coverage
 	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)
 	$(VENV_DIR)/bin/pytest tests/ -v --cov=src --cov-report=term-missing
+
+test-unit: ## Run unit tests only
+	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)
+	$(VENV_DIR)/bin/pytest tests/ -v -m unit
+
+test-integration: ## Run integration tests only
+	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)
+	$(VENV_DIR)/bin/pytest tests/ -v -m integration
 
 lint: ## Run ruff linter and mypy type checker
 	@test -d $(VENV_DIR) || (echo "Run 'make setup' first." && exit 1)

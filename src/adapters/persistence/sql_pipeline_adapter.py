@@ -1,4 +1,9 @@
-"""LangChain SQL pipeline adapter — NL to safe SQL via ports."""
+"""LangChain SQL pipeline adapter — NL → safe SQL → execute → format.
+
+Implements SQLPipelinePort. Fetches live schema from SQLExecutorPort,
+generates read-only SELECT via LangChain structured output, executes
+through PostgresAdapter, and formats results via ChatModelPort.
+"""
 
 import json
 

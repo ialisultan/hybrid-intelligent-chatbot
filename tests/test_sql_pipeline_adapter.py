@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.adapters.persistence.sql_pipeline_adapter import LangChainSQLPipelineAdapter
 from src.application.chains.sql_chain import SQLSchema
 from src.domain.entities.llm import LLMProvider

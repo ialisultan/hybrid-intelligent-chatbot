@@ -16,7 +16,7 @@ from src.infrastructure.logging import configure_logging
 logger = structlog.get_logger(__name__)
 
 
-async def index_documents(data_dir: str = "data") -> None:
+async def index_documents(data_dir: str = "data", *, force: bool = False) -> None:
     settings = get_settings()
     configure_logging(log_level=settings.log_level, json_output=settings.log_json)
 
@@ -27,6 +27,14 @@ async def index_documents(data_dir: str = "data") -> None:
         )
 
     vector_store = create_vector_store(settings, embeddings.langchain_embeddings)
+
+    if not force and _is_already_indexed(vector_store, settings):
+        logger.info(
+            "index.skip_already_indexed",
+            backend=settings.vector_store_backend,
+        )
+        return
+
     documents = load_and_chunk_documents(data_dir)
 
     if not documents:
@@ -46,6 +54,22 @@ async def index_documents(data_dir: str = "data") -> None:
         embedding_provider=embeddings.provider.value,
         chunks=len(documents),
     )
+
+
+def _is_already_indexed(vector_store: object, settings) -> bool:
+    """Return True when the vector store already contains indexed documents."""
+    if isinstance(vector_store, FaissVectorAdapter):
+        index_file = vector_store._index_path / "index.faiss"  # noqa: SLF001
+        return index_file.exists()
+
+    if isinstance(vector_store, QdrantVectorAdapter):
+        try:
+            info = vector_store._client.get_collection(settings.qdrant_collection)  # noqa: SLF001
+            return info.points_count > 0
+        except Exception:
+            return False
+
+    return False
 
 
 if __name__ == "__main__":

@@ -3,6 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+pytestmark = pytest.mark.unit
+
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnableLambda
 

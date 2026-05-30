@@ -1,4 +1,8 @@
-"""Dependency injection container — wires ports, chains, and LangGraph."""
+"""Dependency injection container — wires ports, chains, and LangGraph.
+
+Stub mode (no API keys): StubClassifier + StubSQLPipeline + StubVectorPipeline.
+Real mode: LLMQueryClassifier + LangChain pipeline adapters + FAISS/Qdrant.
+"""
 
 from dataclasses import dataclass, field
 
@@ -12,7 +16,7 @@ from src.adapters.persistence.sql_pipeline_adapter import LangChainSQLPipelineAd
 from src.adapters.repositories.conversation_repository import InMemoryConversationRepository
 from src.adapters.vector.factory import create_vector_store
 from src.adapters.vector.vector_pipeline_adapter import LangChainVectorPipelineAdapter
-from src.application.orchestrator import create_orchestrator
+from src.application.orchestrator import ChatOrchestrator, create_orchestrator
 from src.application.ports.chat_model import ChatModelPort
 from src.application.ports.classifier import ClassifierPort
 from src.application.ports.embedding import EmbeddingPort
@@ -42,6 +46,7 @@ class Container:
     sql_pipeline: SQLPipelinePort | None = None
     vector_pipeline: VectorPipelinePort | None = None
     conversation_repo: ConversationRepositoryPort | None = None
+    orchestrator: ChatOrchestrator | None = None
     chat_use_case: ChatUseCase | None = None
     _initialised: bool = False
 
@@ -95,7 +100,10 @@ class Container:
             classifier=classifier,
             sql_pipeline=sql_pipeline,
             vector_pipeline=vector_pipeline,
+            conversation_repo=self.conversation_repo,
+            history_limit=self.settings.conversation_history_limit,
         )
+        self.orchestrator = orchestrator
         self.chat_use_case = ChatUseCase(
             orchestrator=orchestrator,
             conversation_repo=self.conversation_repo,

@@ -2,6 +2,8 @@
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.adapters.llm.provider_factory import create_chat_model, create_embeddings
 from src.domain.entities.llm import LLMProvider
 from src.infrastructure.config.settings import Settings

@@ -1,4 +1,9 @@
-"""LangChain vector pipeline adapter — retrieval + grounded response via ports."""
+"""LangChain vector pipeline adapter — retrieve → ground → respond.
+
+Implements VectorPipelinePort. Builds a LangChain retriever from
+VectorStorePort (FAISS or Qdrant), runs grounded RAG, and returns
+answer + source citations.
+"""
 
 import structlog
 from langchain_core.runnables import Runnable

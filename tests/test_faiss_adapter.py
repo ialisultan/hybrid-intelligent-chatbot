@@ -1,6 +1,9 @@
 """FAISS adapter tests with FakeEmbeddings."""
 
 import pytest
+
+pytestmark = pytest.mark.unit
+
 from langchain_community.embeddings import FakeEmbeddings
 from langchain_core.documents import Document
 from src.adapters.vector.faiss_adapter import FaissVectorAdapter

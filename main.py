@@ -1,4 +1,8 @@
-"""FastAPI application entry point."""
+"""FastAPI application entry point.
+
+Bootstraps the DI container on startup, registers API routes,
+exception handlers, and middleware. Used by uvicorn and pytest.
+"""
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager

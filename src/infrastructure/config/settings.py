@@ -74,6 +74,7 @@ class Settings(BaseSettings):
         default=0.7, alias="CLASSIFIER_CONFIDENCE_THRESHOLD"
     )
     sql_pipeline_max_rows: int = Field(default=100, alias="SQL_PIPELINE_MAX_ROWS")
+    conversation_history_limit: int = Field(default=10, alias="CONVERSATION_HISTORY_LIMIT")
 
     @computed_field  # type: ignore[prop-decorator]
     @property

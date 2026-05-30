@@ -6,6 +6,7 @@ import structlog
 
 from src.application.graph import build_chat_graph
 from src.application.ports.classifier import ClassifierPort
+from src.application.ports.repository import ConversationRepositoryPort
 from src.application.ports.sql_pipeline import SQLPipelinePort
 from src.application.ports.vector_pipeline import VectorPipelinePort
 from src.domain.entities.chat import ChatMessage, ChatResponse, RouteType
@@ -52,11 +53,15 @@ def create_orchestrator(
     classifier: ClassifierPort,
     sql_pipeline: SQLPipelinePort,
     vector_pipeline: VectorPipelinePort,
+    conversation_repo: ConversationRepositoryPort | None = None,
+    history_limit: int = 10,
 ) -> ChatOrchestrator:
     """Factory — wire dependencies into the LangGraph orchestrator."""
     graph = build_chat_graph(
         classifier=classifier,
         sql_pipeline=sql_pipeline,
         vector_pipeline=vector_pipeline,
+        conversation_repo=conversation_repo,
+        history_limit=history_limit,
     )
     return ChatOrchestrator(graph=graph)

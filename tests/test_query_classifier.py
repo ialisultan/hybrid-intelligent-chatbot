@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.adapters.llm.query_classifier import LLMQueryClassifier
 from src.application.chains.classifier_chain import rule_based_classify
 from src.domain.entities.chat import RouteType

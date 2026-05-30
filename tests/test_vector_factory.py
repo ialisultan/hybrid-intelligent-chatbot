@@ -3,6 +3,9 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+pytestmark = pytest.mark.unit
+
 from langchain_community.embeddings import FakeEmbeddings
 from src.adapters.vector.factory import create_vector_store
 from src.adapters.vector.faiss_adapter import FaissVectorAdapter

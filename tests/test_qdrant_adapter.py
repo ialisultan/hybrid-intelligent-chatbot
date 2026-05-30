@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.adapters.vector.qdrant_adapter import QdrantVectorAdapter
 from src.domain.exceptions.base import VectorStoreError
 from src.infrastructure.config.settings import Settings
