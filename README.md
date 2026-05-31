@@ -224,19 +224,7 @@ After starting the API and UI (local or Docker):
 | **Settings** | Dark mode, backend URL, conversation ID, new session |
 | **Chat** | Route badges (SQL / VECTOR), confidence pill, Show SQL, source chips |
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Hybrid Intelligent Chatbot              [ Online | Offline ] │
-├──────────────┬──────────────────────────────────────────────────┤
-│ Sidebar      │  Chat                                            │
-│ [Quick Tests]│  👤 user bubble                                  │
-│ [Settings]   │  🤖 assistant + [SQL|VECTOR] badge · confidence  │
-│ [Demo Script]│  □ Show SQL · source chips                       │
-│ Clear chat   │  [ Ask about revenue, policies… ]                │
-└──────────────┴──────────────────────────────────────────────────┘
-```
-
-Optional portfolio screenshot: save as [`docs/images/streamlit-demo.png`](docs/images/streamlit-demo.png) after `make docker`.
+[`docs/images/streamlit-demo.png`](docs/images/streamlit-demo.png)
 
 ---
 
@@ -421,3 +409,7 @@ Run `make help` for the full list.
 ## License
 
 MIT
+
+---
+
+Author: Ali Sultan
