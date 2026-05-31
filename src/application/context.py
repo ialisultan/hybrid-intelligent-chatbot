@@ -1,5 +1,29 @@
 """Conversation context helpers for multi-turn LangGraph orchestration."""
 
+from typing import Any
+
+
+def enrich_invoke_config_with_conversation(
+    config: dict[str, Any] | None,
+    conversation_id: str,
+) -> dict[str, Any]:
+    """Attach a stable session thread id to RunnableConfig for LangGraph nodes.
+
+    Uses the API ``conversation_id`` as ``thread_id`` so every turn in one chat
+    session groups under the same LangSmith thread.
+    """
+    thread_id = str(conversation_id)
+    enriched: dict[str, Any] = dict(config) if config else {}
+    metadata = dict(enriched.get("metadata") or {})
+    metadata["thread_id"] = thread_id
+    metadata["conversation_id"] = thread_id
+    metadata["session_id"] = thread_id
+    enriched["metadata"] = metadata
+    configurable = dict(enriched.get("configurable") or {})
+    configurable["thread_id"] = thread_id
+    enriched["configurable"] = configurable
+    return enriched
+
 
 def serialize_messages(messages: list) -> list[dict]:
     """Convert ChatMessage entities to serializable dicts."""

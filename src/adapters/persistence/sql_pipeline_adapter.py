@@ -18,7 +18,10 @@ from src.application.ports.sql_pipeline import SQLPipelinePort
 from src.domain.entities.llm import LLMProvider
 from src.domain.exceptions.base import DatabaseError
 from src.infrastructure.config.settings import Settings
-from src.infrastructure.tracing.langsmith import build_child_run_config
+from src.infrastructure.tracing.langsmith import (
+    build_child_run_config,
+    resolve_thread_id_from_config,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -54,6 +57,7 @@ class LangChainSQLPipelineAdapter(SQLPipelinePort):
                 config,
                 run_name="sql_generation",
                 extra_metadata={"user_query": query},
+                thread_id=resolve_thread_id_from_config(config),
             )
             result = await self._chain.ainvoke(
                 {"query": query, "schema": schema},
@@ -107,5 +111,6 @@ class LangChainSQLPipelineAdapter(SQLPipelinePort):
             config,
             run_name="sql_answer_formatting",
             extra_metadata={"user_query": query},
+            thread_id=resolve_thread_id_from_config(config),
         )
         return await self._chat_model.generate(system, user, config=format_config)

@@ -10,7 +10,7 @@ from src.application.ports.classifier import ClassifierPort
 from src.application.routing.rules import detect_policy_intent, rule_based_classify
 from src.domain.entities.chat import QueryRoute, RouteType
 from src.infrastructure.config.settings import Settings
-from src.infrastructure.tracing.langsmith import build_child_run_config
+from src.infrastructure.tracing.langsmith import build_child_run_config, resolve_thread_id_from_config
 from src.interfaces.schemas.classification import ClassificationResultSchema
 
 logger = structlog.get_logger(__name__)
@@ -48,6 +48,7 @@ class LLMQueryClassifier(ClassifierPort):
                 config,
                 run_name="classifier",
                 extra_metadata={"user_query": query},
+                thread_id=resolve_thread_id_from_config(config),
             )
             result = await self._chain.ainvoke({"query": query}, config=chain_config)
             route_result = self._to_query_route(result)

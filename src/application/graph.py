@@ -25,6 +25,7 @@ from src.application.ports.vector_pipeline import VectorPipelinePort
 from src.application.routing.contracts import validate_pipeline_output
 from src.domain.entities.chat import RouteType
 from src.domain.exceptions.base import RoutingViolationError
+from src.application.context import enrich_invoke_config_with_conversation
 
 logger = structlog.get_logger(__name__)
 
@@ -83,7 +84,10 @@ def build_chat_graph(
         config: RunnableConfig | None = None,
     ) -> ChatState:
         contextual_query = state.get("contextual_query") or state["query"]
-        result = await classifier.classify(contextual_query, config=config)
+        session_config = enrich_invoke_config_with_conversation(
+            config, state["conversation_id"]
+        )
+        result = await classifier.classify(contextual_query, config=session_config)
         logger.info(
             "graph.classify",
             route=result.route.value,
@@ -110,7 +114,10 @@ def build_chat_graph(
     ) -> ChatState:
         contextual_query = state.get("contextual_query") or state["query"]
         logger.info("graph.sql_pipeline.start", query=contextual_query[:80])
-        result = await sql_pipeline.run(contextual_query, config=config)
+        session_config = enrich_invoke_config_with_conversation(
+            config, state["conversation_id"]
+        )
+        result = await sql_pipeline.run(contextual_query, config=session_config)
         sources: list[str] = []
         sql_query = result.get("sql_query")
         validate_pipeline_output(
@@ -131,7 +138,10 @@ def build_chat_graph(
     ) -> ChatState:
         contextual_query = state.get("contextual_query") or state["query"]
         logger.info("graph.vector_pipeline.start", query=contextual_query[:80])
-        result = await vector_pipeline.run(contextual_query, config=config)
+        session_config = enrich_invoke_config_with_conversation(
+            config, state["conversation_id"]
+        )
+        result = await vector_pipeline.run(contextual_query, config=session_config)
         sources = result.get("sources", [])
         sql_query = None
         validate_pipeline_output(

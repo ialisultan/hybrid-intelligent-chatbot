@@ -10,10 +10,12 @@ from src.application.orchestrator import ChatOrchestrator, create_orchestrator
 from src.domain.entities.chat import ChatMessage, RouteType
 from src.infrastructure.config.settings import Settings
 from src.infrastructure.logging import bind_request_context
+from src.application.context import enrich_invoke_config_with_conversation
 from src.infrastructure.tracing.langsmith import (
     build_child_run_config,
     build_graph_invoke_config,
     configure_langsmith,
+    extract_thread_metadata,
     make_graph_invoke_config_builder,
 )
 
@@ -80,6 +82,44 @@ def test_configure_langsmith_disables_when_key_missing(monkeypatch):
     assert os.environ["LANGSMITH_TRACING"] == "false"
 
 
+def test_enrich_invoke_config_stabilizes_thread_for_session():
+    conversation_id = "6c669e84-ec3a-4463-ab5e-acb1e31b2856"
+    turn1 = enrich_invoke_config_with_conversation(None, conversation_id)
+    turn2 = enrich_invoke_config_with_conversation({"metadata": {}}, conversation_id)
+
+    assert turn1["metadata"]["thread_id"] == conversation_id
+    assert turn2["metadata"]["thread_id"] == conversation_id
+    assert turn1["configurable"]["thread_id"] == conversation_id
+    assert turn2["configurable"]["thread_id"] == conversation_id
+
+
+def test_extract_thread_metadata_reads_configurable_thread_id():
+    parent = {"configurable": {"thread_id": "session-abc"}, "metadata": {}}
+    meta = extract_thread_metadata(parent)
+    assert meta["thread_id"] == "session-abc"
+    assert meta["conversation_id"] == "session-abc"
+
+
+def test_same_conversation_id_same_thread_across_turns():
+    conversation_id = uuid4()
+    bind_request_context("req-turn-1")
+    config1 = build_graph_invoke_config(
+        conversation_id=conversation_id,
+        app_env="dev",
+        app_name="app",
+        user_query="first",
+    )
+    bind_request_context("req-turn-2")
+    config2 = build_graph_invoke_config(
+        conversation_id=conversation_id,
+        app_env="dev",
+        app_name="app",
+        user_query="second",
+    )
+    assert config1["metadata"]["thread_id"] == config2["metadata"]["thread_id"]
+    assert config1["metadata"]["request_id"] != config2["metadata"]["request_id"]
+
+
 def test_build_graph_invoke_config_includes_thread_metadata():
     request_id = "test-request-123"
     bind_request_context(request_id)
@@ -101,6 +141,27 @@ def test_build_graph_invoke_config_includes_thread_metadata():
     assert config["metadata"]["session_id"] == str(conversation_id)
     assert config["metadata"]["user_query"] == user_query
     assert config["metadata"]["request_id"] == request_id
+
+
+def test_build_child_run_config_does_not_deepcopy_callbacks():
+    """LangSmith tracers in callbacks are not picklable — must reuse by reference."""
+
+    class _NonPicklableCallback:
+        __slots__ = ()
+
+        def __reduce__(self):
+            raise TypeError("no default __reduce__ due to non-trivial __cinit__")
+
+    parent = {
+        "run_name": "chat: hello",
+        "metadata": {"thread_id": "tid-1", "conversation_id": "tid-1"},
+        "callbacks": [_NonPicklableCallback()],
+    }
+    child = build_child_run_config(parent, run_name="classifier")
+
+    assert child["callbacks"] is parent["callbacks"]
+    assert child["run_name"] == "classifier"
+    assert child["metadata"]["thread_id"] == "tid-1"
 
 
 def test_build_child_run_config_preserves_thread_metadata():

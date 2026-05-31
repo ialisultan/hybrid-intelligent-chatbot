@@ -17,7 +17,10 @@ from src.application.ports.vector_pipeline import VectorPipelinePort
 from src.application.ports.vector_store import VectorStorePort
 from src.domain.exceptions.base import VectorStoreError
 from src.infrastructure.config.settings import Settings
-from src.infrastructure.tracing.langsmith import build_child_run_config
+from src.infrastructure.tracing.langsmith import (
+    build_child_run_config,
+    resolve_thread_id_from_config,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -48,6 +51,7 @@ class LangChainVectorPipelineAdapter(VectorPipelinePort):
                 config,
                 run_name="vector_rag",
                 extra_metadata={"user_query": query},
+                thread_id=resolve_thread_id_from_config(config),
             )
             result = await self._chain.ainvoke({"query": query}, config=rag_config)
             if isinstance(result, dict):

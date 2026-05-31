@@ -1,12 +1,12 @@
 """LangSmith tracing configuration and RunnableConfig helpers."""
 
 import os
-from copy import deepcopy
 from typing import Any
 from uuid import UUID
 
 import structlog
 
+from src.application.context import enrich_invoke_config_with_conversation
 from src.infrastructure.config.settings import Settings
 from src.infrastructure.logging import get_request_id
 
@@ -97,17 +97,47 @@ def _thread_metadata(
     return meta
 
 
-def extract_thread_metadata(config: dict[str, Any] | None) -> dict[str, Any]:
-    """Pull thread-related metadata from a parent RunnableConfig."""
-    if not config:
-        return {}
-    meta = dict(config.get("metadata") or {})
-    thread_id = meta.get("thread_id") or meta.get("conversation_id") or meta.get("session_id")
+def _normalize_thread_fields(meta: dict[str, Any], thread_id: str) -> dict[str, Any]:
+    """Ensure LangSmith thread keys all point at the same session id."""
+    meta["thread_id"] = thread_id
+    meta["conversation_id"] = thread_id
+    meta["session_id"] = thread_id
+    return meta
+
+
+def extract_thread_metadata(
+    config: dict[str, Any] | None,
+    *,
+    fallback_conversation_id: str | None = None,
+) -> dict[str, Any]:
+    """Pull thread-related metadata from RunnableConfig (metadata + configurable)."""
+    meta: dict[str, Any] = dict(config.get("metadata") or {}) if config else {}
+
+    configurable = (config or {}).get("configurable") or {}
+    config_thread = configurable.get("thread_id")
+    if config_thread:
+        _normalize_thread_fields(meta, str(config_thread))
+
+    thread_id = (
+        meta.get("thread_id")
+        or meta.get("conversation_id")
+        or meta.get("session_id")
+        or fallback_conversation_id
+    )
     if thread_id:
-        meta.setdefault("thread_id", str(thread_id))
-        meta.setdefault("conversation_id", str(thread_id))
-        meta.setdefault("session_id", str(thread_id))
+        _normalize_thread_fields(meta, str(thread_id))
+
     return {k: meta[k] for k in _THREAD_METADATA_KEYS if k in meta}
+
+
+def resolve_thread_id_from_config(config: dict[str, Any] | None) -> str | None:
+    """Read the session thread id from a RunnableConfig."""
+    meta = extract_thread_metadata(config)
+    return meta.get("thread_id") or meta.get("conversation_id")
+
+
+# Alias for callers that import from infrastructure.tracing
+enrich_config_with_thread = enrich_invoke_config_with_conversation
 
 
 def build_child_run_config(
@@ -115,18 +145,48 @@ def build_child_run_config(
     *,
     run_name: str,
     extra_metadata: dict[str, Any] | None = None,
+    thread_id: str | None = None,
 ) -> dict[str, Any]:
-    """Build a child RunnableConfig that preserves callbacks and thread metadata."""
-    if not parent:
-        child: dict[str, Any] = {"run_name": run_name, "metadata": dict(extra_metadata or {})}
-        return child
+    """Build a child RunnableConfig that preserves callbacks and thread metadata.
 
-    child = deepcopy(parent)
-    child["run_name"] = run_name
-    meta = extract_thread_metadata(parent)
+    Callback handlers (LangSmith tracers) must be passed by reference — they are not
+    picklable and will raise if deep-copied.
+    """
+    fallback = thread_id
+    if not fallback and extra_metadata:
+        fallback = (
+            extra_metadata.get("thread_id")
+            or extra_metadata.get("conversation_id")
+            or extra_metadata.get("session_id")
+        )
+        if fallback is not None:
+            fallback = str(fallback)
+
+    meta = extract_thread_metadata(parent, fallback_conversation_id=fallback)
     if extra_metadata:
         meta.update(extra_metadata)
-    child["metadata"] = meta
+    if fallback:
+        _normalize_thread_fields(meta, str(fallback))
+
+    if not parent:
+        child: dict[str, Any] = {"run_name": run_name, "metadata": meta}
+        if fallback:
+            child["configurable"] = {"thread_id": str(fallback)}
+        return child
+
+    child = {"run_name": run_name, "metadata": meta}
+
+    # Shallow-copy only serializable fields; never deepcopy callbacks or run_id.
+    if parent.get("callbacks") is not None:
+        child["callbacks"] = parent["callbacks"]
+    if parent.get("tags") is not None:
+        child["tags"] = list(parent["tags"])
+    configurable = dict(parent.get("configurable") or {})
+    if fallback:
+        configurable["thread_id"] = str(fallback)
+    if configurable:
+        child["configurable"] = configurable
+
     return child
 
 
