@@ -30,8 +30,9 @@ def render_response_meta(meta: dict[str, Any], *, index: int) -> None:
     sources = meta.get("sources") or []
 
     route_lower = str(route).lower()
+    sql_dialect = meta.get("sql_dialect") or "SQL"
     pipeline = (
-        "PostgreSQL NL→SQL"
+        f"{sql_dialect} NL→SQL"
         if route_lower == "sql"
         else "Document RAG"
         if route_lower == "vector"

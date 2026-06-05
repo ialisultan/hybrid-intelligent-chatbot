@@ -32,6 +32,7 @@ def _meta_from_parsed(parsed: Any) -> dict[str, Any]:
         "confidence": parsed.confidence,
         "sql_query": parsed.sql_query,
         "sources": parsed.sources,
+        "sql_dialect": st.session_state.get("sql_dialect", "SQL"),
     }
 
 

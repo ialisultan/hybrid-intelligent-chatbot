@@ -33,9 +33,10 @@ st.markdown(
     f'<span class="status-pill {status_class}">{status_label}</span></h1>',
     unsafe_allow_html=True,
 )
+_sql_dialect = st.session_state.get("sql_dialect", "SQL database")
 st.markdown(
     '<p class="hybrid-subtitle">Each query routes to exactly one pipeline — '
-    "<strong>SQL</strong> (PostgreSQL) or <strong>Vector</strong> (document RAG). "
+    f"<strong>SQL</strong> ({_sql_dialect}) or <strong>Vector</strong> (document RAG). "
     "Pipelines never mix.</p>",
     unsafe_allow_html=True,
 )

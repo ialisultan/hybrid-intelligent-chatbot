@@ -12,6 +12,7 @@ class HealthResponse(BaseModel):
     chat_provider: str = Field(description="Active chat LLM provider")
     embedding_provider: str = Field(description="Active embedding provider")
     vector_backend: str = Field(description="Configured vector store backend")
+    sql_dialect: str = Field(description="SQL dialect for NL→SQL (SQLite or PostgreSQL)")
 
 
 class ReadyResponse(BaseModel):

@@ -16,6 +16,7 @@ async def test_health_check(client):
     assert "chat_provider" in body
     assert "embedding_provider" in body
     assert "vector_backend" in body
+    assert body["sql_dialect"] in {"SQLite", "PostgreSQL"}
 
 
 @pytest.mark.asyncio

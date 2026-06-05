@@ -28,6 +28,7 @@ async def health_check() -> HealthResponse:
         chat_provider=chat_provider,
         embedding_provider=embedding_provider,
         vector_backend=settings.vector_store_backend,
+        sql_dialect=settings.sql_dialect,
     )
 
 

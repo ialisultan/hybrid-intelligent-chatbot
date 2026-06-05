@@ -30,6 +30,7 @@ def render_connection_status() -> bool:
     """Compact online/offline indicator. Returns True if backend is reachable."""
     health = _fetch_health()
     if health:
+        st.session_state["sql_dialect"] = str(health.get("sql_dialect", "SQL"))
         st.markdown(
             '<p class="status-online">● Online</p>',
             unsafe_allow_html=True,
